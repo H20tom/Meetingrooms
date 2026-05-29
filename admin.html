@@ -340,7 +340,7 @@
       if (!u) return;
       const res = await Auth.requestPasswordReset(u.email);
       if (!res.ok) {
-        H20.toast({ type: 'error', message: 'Reset aanmaken mislukt.' });
+        H20.toast({ type: 'error', message: 'Reset aanmaken mislukt' + (res.reason ? ` (${res.reason})` : '') + '.' });
         return;
       }
       openResetLinkModal(u, res);
@@ -349,7 +349,7 @@
       const u = (await Auth.listUsers()).find((x) => x.id === e.target.dataset.pin);
       if (!u) return;
       const res = await Auth.createPinSetupLink(u.id);
-      if (!res.ok) { H20.toast({ type: 'error', message: 'PIN-link aanmaken mislukt.' }); return; }
+      if (!res.ok) { H20.toast({ type: 'error', message: 'PIN-link aanmaken mislukt' + (res.reason ? ` (${res.reason})` : '') + '.' }); return; }
       openPinLinkModal(u, res);
     }
   });
