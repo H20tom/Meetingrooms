@@ -3,9 +3,9 @@
 // Laadt schema.sql in de MySQL-database en seedt de admin-gebruiker (bcrypt).
 // Gebruik: npm run migrate
 
-require('dotenv').config();
-const fs = require('fs');
 const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
+const fs = require('fs');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 
