@@ -135,6 +135,12 @@ if ('serviceWorker' in navigator) {
 
   H20.startClock(document.getElementById('clock'), document.getElementById('date'));
 
+  function escapeHtml(str) {
+    return String(str ?? '').replace(/[&<>"']/g, (c) => (
+      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+    ));
+  }
+
   function cardHTML(room, s, scheduledList) {
     const isAvail = s.status === 'available';
     const status = isAvail ? 'Beschikbaar' : 'Bezet';
@@ -158,12 +164,22 @@ if ('serviceWorker' in navigator) {
       metaStart = H20.fmtTime(start);
       metaEnd   = H20.fmtTime(end);
       const email = s.email || null;
-      if (email) {
-        bookedByHTML = `<div class="room-card__booked">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-          ${email}
+      const title = s.title || null;
+      const who = s.name ? `${escapeHtml(s.name)} · ${escapeHtml(email)}` : escapeHtml(email || '');
+      let booked = '';
+      if (title) {
+        booked += `<div class="room-card__meeting">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>
+          ${escapeHtml(title)}
         </div>`;
       }
+      if (email) {
+        booked += `<div class="room-card__booked">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          ${who}
+        </div>`;
+      }
+      bookedByHTML = booked;
     }
 
     return `

@@ -1049,8 +1049,16 @@ button {
   cursor: pointer;
 }
 
+.room-card__meeting {
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary, #e6e6e6);
+  display: flex; align-items: center; gap: 6px;
+}
+.room-card__meeting svg { flex: 0 0 auto; opacity: .85; }
 .room-card__booked {
-  margin-top: 8px;
+  margin-top: 6px;
   font-size: 13px;
   color: var(--text-tertiary);
   display: inline-flex; align-items: center; gap: 6px;
