@@ -2,6 +2,12 @@
   "version": "0.0.1",
   "configurations": [
     {
+      "name": "h20-fullstack",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["server/dev-local.js"],
+      "port": 8080
+    },
+    {
       "name": "meetingroom",
       "runtimeExecutable": "python3",
       "runtimeArgs": ["-m", "http.server", "8081"],

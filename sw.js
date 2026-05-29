@@ -1,7 +1,7 @@
 /* ============================================================
    H20 Meetingroom — Service Worker (offline cache)
    ============================================================ */
-const CACHE_VERSION = 'h20-meetingroom-v14';
+const CACHE_VERSION = 'h20-meetingroom-v15';
 const CORE = [
   './',
   './index.html',
@@ -36,6 +36,13 @@ self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
+
+  // API-verzoeken NOOIT cachen: altijd live van de server (anders toont het
+  // dashboard/tablet verouderde zaalstatus). Geen offline-fallback voor /api.
+  if (url.origin === location.origin && url.pathname.startsWith('/api/')) {
+    event.respondWith(fetch(req));
+    return;
+  }
 
   // Network-first for same-origin HTML; cache-first for everything else
   if (req.mode === 'navigate' || (url.origin === location.origin && req.destination === 'document')) {
