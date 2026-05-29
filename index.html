@@ -10,7 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css" />
 </head>
-<body class="portal-page">
+<body class="portal-page" style="visibility:hidden">
 
 <main class="portal">
   <header class="portal__header">
@@ -76,5 +76,14 @@
   </footer>
 </main>
 
+<script src="app.js"></script>
+<script src="auth.js"></script>
+<script>
+// Login vereist voordat het portaal zichtbaar wordt; anders direct naar login.html.
+(async function () {
+  const me = await Auth.requireLogin();
+  if (me) document.body.style.visibility = 'visible';
+})();
+</script>
 </body>
 </html>

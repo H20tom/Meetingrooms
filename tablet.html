@@ -11,7 +11,7 @@
 </head>
 <body>
 
-<main class="tablet" id="tablet" data-status="available">
+<main class="tablet" id="tablet" data-status="available" style="visibility:hidden">
   <header class="tablet__header">
     <img class="tablet__logo" src="Logo H20 2026.png" alt="H20" />
     <div>
@@ -260,14 +260,18 @@ window.addEventListener('offline', syncOnlineFlag);
 syncOnlineFlag();
 </script>
 <script>
-(function () {
+(async function () {
   const params = new URLSearchParams(location.search);
   const roomId = (params.get('room') || 'raboroom').toLowerCase();
   const room = H20.ROOMS[roomId] || H20.ROOMS.raboroom;
 
-  // Zorg dat de demo-gebruikers + pincodes bestaan, ook als de tablet
-  // de eerste pagina is die geopend wordt (login/dashboard/admin doen dit ook).
-  if (typeof Auth !== 'undefined' && Auth.ensureSeed) { Auth.ensureSeed(); }
+  // Login vereist — ook op de tablet. Na één keer inloggen blijft de sessie
+  // (httpOnly-cookie) 7 dagen geldig, dus de tablet blijft daarna bruikbaar.
+  // De ?room=-parameter wordt bewaard zodat we na inloggen terugkeren naar
+  // exact deze ruimte.
+  const me = await Auth.requireLogin();
+  if (!me) return;
+  document.getElementById('tablet').style.visibility = 'visible';
 
   document.title = `H20 · ${room.name}`;
   document.getElementById('roomName').textContent = room.name;
@@ -338,11 +342,11 @@ syncOnlineFlag();
     });
   }
 
-  function updateAvailableConflictHints() {
-    [30, 60, 90].forEach((m) => {
+  async function updateAvailableConflictHints() {
+    for (const m of [30, 60, 90]) {
       const btn = availActions.querySelector(`button[data-min="${m}"]`);
-      if (!btn) return;
-      const check = H20.canStart(roomId, m);
+      if (!btn) continue;
+      const check = await H20.canStart(roomId, m);
       btn.classList.toggle('is-blocked', !check.ok);
       let hint = btn.querySelector('.btn-action__hint');
       if (!check.ok && check.maxMinutes !== null) {
@@ -355,14 +359,14 @@ syncOnlineFlag();
       } else if (hint) {
         hint.remove();
       }
-    });
+    }
   }
 
-  function updateExtendConflictHints() {
-    [15, 30, 60].forEach((m) => {
+  async function updateExtendConflictHints() {
+    for (const m of [15, 30, 60]) {
       const btn = busyActions.querySelector(`button[data-extend="${m}"]`);
-      if (!btn) return;
-      const check = H20.canExtend(roomId, m);
+      if (!btn) continue;
+      const check = await H20.canExtend(roomId, m);
       btn.classList.toggle('is-blocked', !check.ok);
       let hint = btn.querySelector('.btn-action__hint');
       if (!check.ok && check.maxMinutes !== null) {
@@ -375,11 +379,11 @@ syncOnlineFlag();
       } else if (hint) {
         hint.remove();
       }
-    });
+    }
   }
 
-  function updateNextScheduledLabel() {
-    const next = H20.nextScheduledAfter(roomId, new Date());
+  async function updateNextScheduledLabel() {
+    const next = await H20.nextScheduledAfter(roomId, new Date());
     if (!next) { nextLabel.textContent = ''; return; }
     const start = new Date(next.startAt);
     const today = new Date(); today.setHours(0,0,0,0);
@@ -391,54 +395,58 @@ syncOnlineFlag();
     nextLabel.textContent = `Volgende: ${dayPrefix} ${H20.fmtTime(start)}${titlePart}`;
   }
 
-  function render() {
-    const s = H20.getRoomStatus(roomId);
-    if (s.status === 'available') {
-      tabletEl.dataset.status = 'available';
-      statusText.textContent = 'Beschikbaar';
-      statusSub.textContent = 'Direct te reserveren';
-      bookedBy.style.display = 'none';
-      availActions.style.display = '';
-      planBtn.style.display = 'inline-flex';
-      busyActions.style.display = 'none';
-      endBtn.style.display = 'none';
-      updateEndPreviews();
-      updateAvailableConflictHints();
-    } else {
-      tabletEl.dataset.status = 'busy';
-      const cur = H20.loadState()[roomId]?.current || null;
-      const showBigTitle = !!(cur?.showTitleOnScreen && cur?.title);
-      const busyTitleEl = document.getElementById('busyTitle');
-      if (showBigTitle) {
-        busyTitleEl.textContent = cur.title;
-        busyTitleEl.style.display = '';
-      } else {
-        busyTitleEl.textContent = '';
-        busyTitleEl.style.display = 'none';
-      }
-      const titleSuffix = (!showBigTitle && s.title) ? ` · ${s.title}` : '';
-      statusText.textContent = `Bezet tot ${H20.fmtTime(s.busyUntil)}`;
-      const mins = s.minutesLeft;
-      const human = mins >= 60
-        ? `${Math.floor(mins/60)} uur ${mins%60 ? `${mins%60} min` : ''}`.trim()
-        : `${mins} ${mins === 1 ? 'minuut' : 'minuten'}`;
-      statusSub.innerHTML = `Nog <strong>${human}</strong>${titleSuffix}`;
-      const bookedName = cur?.name || null;
-      const bookedEmail = cur?.email || null;
-      const bookedLabel = bookedName || bookedEmail;
-      if (bookedLabel) {
-        bookedByText.textContent = `Geboekt door ${bookedLabel}`;
-        bookedBy.style.display = 'inline-flex';
-      } else {
+  let rendering = false;
+  async function render() {
+    if (rendering) return;
+    rendering = true;
+    try {
+      const s = await H20.getRoomStatus(roomId);
+      if (s.status === 'available') {
+        tabletEl.dataset.status = 'available';
+        statusText.textContent = 'Beschikbaar';
+        statusSub.textContent = 'Direct te reserveren';
         bookedBy.style.display = 'none';
+        availActions.style.display = '';
+        planBtn.style.display = 'inline-flex';
+        busyActions.style.display = 'none';
+        endBtn.style.display = 'none';
+        updateEndPreviews();
+        await updateAvailableConflictHints();
+      } else {
+        tabletEl.dataset.status = 'busy';
+        const showBigTitle = !!(s.showTitleOnScreen && s.title);
+        const busyTitleEl = document.getElementById('busyTitle');
+        if (showBigTitle) {
+          busyTitleEl.textContent = s.title;
+          busyTitleEl.style.display = '';
+        } else {
+          busyTitleEl.textContent = '';
+          busyTitleEl.style.display = 'none';
+        }
+        const titleSuffix = (!showBigTitle && s.title) ? ` · ${s.title}` : '';
+        statusText.textContent = `Bezet tot ${H20.fmtTime(s.busyUntil)}`;
+        const mins = s.minutesLeft;
+        const human = mins >= 60
+          ? `${Math.floor(mins/60)} uur ${mins%60 ? `${mins%60} min` : ''}`.trim()
+          : `${mins} ${mins === 1 ? 'minuut' : 'minuten'}`;
+        statusSub.innerHTML = `Nog <strong>${human}</strong>${titleSuffix}`;
+        const bookedLabel = s.name || s.email || null;
+        if (bookedLabel) {
+          bookedByText.textContent = `Geboekt door ${bookedLabel}`;
+          bookedBy.style.display = 'inline-flex';
+        } else {
+          bookedBy.style.display = 'none';
+        }
+        availActions.style.display = 'none';
+        planBtn.style.display = 'none';
+        busyActions.style.display = 'grid';
+        endBtn.style.display = 'inline-flex';
+        await updateExtendConflictHints();
       }
-      availActions.style.display = 'none';
-      planBtn.style.display = 'none';
-      busyActions.style.display = 'grid';
-      endBtn.style.display = 'inline-flex';
-      updateExtendConflictHints();
+      await updateNextScheduledLabel();
+    } finally {
+      rendering = false;
     }
-    updateNextScheduledLabel();
   }
 
   // ---------- Reserve modal (30/60/90) ----------
@@ -447,30 +455,30 @@ syncOnlineFlag();
   const reserveSub = document.getElementById('reserveSub');
   let reservePendingMin = 0;
 
-  function openReserveModal(min) {
+  async function openReserveModal(min) {
     reservePendingMin = min;
     const end = new Date(Date.now() + min * 60000);
     reserveSub.textContent = `${min} minuten — tot ${H20.fmtTime(end)}.`;
     document.getElementById('reserveTitleInput').value = '';
     document.getElementById('reserveShowTitle').checked = false;
     prefillEmail(reserveEmail);
-    populateUserTiles(document.getElementById('reserveTilesGrid'), 'reserve');
+    await populateUserTiles(document.getElementById('reserveTilesGrid'), 'reserve');
     reserveModal.style.display = 'flex';
     setTimeout(() => reserveEmail.focus(), 60);
   }
   reserveModal.addEventListener('click', (e) => { if (e.target === reserveModal) reserveModal.style.display = 'none'; });
   document.getElementById('reserveCancel').addEventListener('click', () => { reserveModal.style.display = 'none'; });
-  document.getElementById('reserveConfirm').addEventListener('click', () => {
+  document.getElementById('reserveConfirm').addEventListener('click', async () => {
     const email = reserveEmail.value.trim();
     if (!H20.isValidEmail(email)) {
       H20.toast({ type: 'warn', message: 'Vul een geldig e-mailadres in.' });
       reserveEmail.focus();
       return;
     }
-    if (pinRequiredForEmail(email, 'reserve')) return;
+    if (await pinRequiredForEmail(email, 'reserve')) return;
     const title = document.getElementById('reserveTitleInput').value.trim() || null;
     const showTitleOnScreen = document.getElementById('reserveShowTitle').checked;
-    const result = H20.startMeeting(roomId, reservePendingMin, { email, title, showTitleOnScreen });
+    const result = await H20.startMeeting(roomId, reservePendingMin, { email, title, showTitleOnScreen });
     if (!result.ok && result.conflictWith) {
       const next = result.conflictWith;
       const max = result.maxMinutes;
@@ -480,8 +488,8 @@ syncOnlineFlag();
         message: `Hey, dit is niet mogelijk omdat om <strong>${H20.fmtTime(new Date(next.startAt))}</strong> een geplande meeting${next.title ? ` (${next.title})` : ''} begint. Maximaal <strong>${max} ${max === 1 ? 'minuut' : 'minuten'}</strong> beschikbaar tot dan.`,
         action: max >= 5 ? {
           label: `Wel ${max} min starten`,
-          onClick: () => {
-            const r2 = H20.startMeeting(roomId, max, { email, title, showTitleOnScreen });
+          onClick: async () => {
+            const r2 = await H20.startMeeting(roomId, max, { email, title, showTitleOnScreen });
             if (r2.ok) { reserveModal.style.display = 'none'; render(); }
           }
         } : null,
@@ -496,12 +504,12 @@ syncOnlineFlag();
   });
 
   // ---------- Quick start buttons ----------
-  availActions.addEventListener('click', (e) => {
+  availActions.addEventListener('click', async (e) => {
     const btn = e.target.closest('button[data-min]');
     if (!btn || btn === document.getElementById('customBtn')) return;
     const m = parseInt(btn.dataset.min, 10);
     // Pre-check conflict before showing email modal
-    const check = H20.canStart(roomId, m);
+    const check = await H20.canStart(roomId, m);
     if (!check.ok) {
       const next = check.conflictWith;
       H20.toast({
@@ -519,11 +527,11 @@ syncOnlineFlag();
   });
 
   // ---------- Extend ----------
-  busyActions.addEventListener('click', (e) => {
+  busyActions.addEventListener('click', async (e) => {
     const btn = e.target.closest('button[data-extend]');
     if (!btn) return;
     const add = parseInt(btn.dataset.extend, 10);
-    const result = H20.extendMeeting(roomId, add);
+    const result = await H20.extendMeeting(roomId, add);
     if (!result.ok && result.conflictWith) {
       const next = result.conflictWith;
       const max = result.maxMinutes;
@@ -533,8 +541,8 @@ syncOnlineFlag();
         message: `Hey, dit is niet mogelijk omdat om <strong>${H20.fmtTime(new Date(next.startAt))}</strong> een geplande meeting${next.title ? ` (${next.title})` : ''} begint. Je kunt maximaal <strong>+${max} ${max === 1 ? 'minuut' : 'minuten'}</strong> verlengen.`,
         action: max >= 5 ? {
           label: `Wel +${max} min verlengen`,
-          onClick: () => {
-            const r2 = H20.extendMeeting(roomId, max);
+          onClick: async () => {
+            const r2 = await H20.extendMeeting(roomId, max);
             if (r2.ok) {
               H20.toast({ type: 'success', message: `Vergadering verlengd tot ${H20.fmtTime(r2.newEnd)}.` });
               render();
@@ -607,21 +615,21 @@ syncOnlineFlag();
   let pendingAddMin = 0;
   let pendingEndDate = null;
 
-  function buildExtendTiles() {
-    const status = H20.getRoomStatus(roomId);
-    const current = status.current;
+  async function buildExtendTiles() {
+    const status = await H20.getRoomStatus(roomId);
+    const isBusy = status.status === 'busy';
     pendingAddMin = 0;
     pendingEndDate = null;
     extendConfirmBtn.disabled = true;
     extendPreview.textContent = 'Selecteer een eindtijd…';
     extendPreview.classList.remove('is-error', 'is-ok');
 
-    const anchor = current ? new Date(current.busyUntil) : new Date();
-    extendCurrentLabel.innerHTML = current
+    const anchor = isBusy ? new Date(status.busyUntil) : new Date();
+    extendCurrentLabel.innerHTML = isBusy
       ? `Huidige eindtijd: <strong>${H20.fmtTime(anchor)}</strong>`
       : `Geen actieve meeting — kies een nieuwe eindtijd.`;
 
-    const next = H20.nextScheduledAfter(roomId, anchor);
+    const next = await H20.nextScheduledAfter(roomId, anchor);
     const capDate = next ? new Date(next.startAt) : null;
 
     populateTimeGrid(extendTimesEl, anchor, capDate);
@@ -629,8 +637,8 @@ syncOnlineFlag();
     extendModal._capDate = capDate;
   }
 
-  document.getElementById('extendCustomBtn').addEventListener('click', () => {
-    buildExtendTiles();
+  document.getElementById('extendCustomBtn').addEventListener('click', async () => {
+    await buildExtendTiles();
     extendModal.style.display = 'flex';
   });
   document.getElementById('extendCancel').addEventListener('click', () => extendModal.style.display = 'none');
@@ -666,8 +674,8 @@ syncOnlineFlag();
     if (pendingAddMin > 0) doExtend(pendingAddMin);
   });
 
-  function doExtend(addMin) {
-    const result = H20.extendMeeting(roomId, addMin);
+  async function doExtend(addMin) {
+    const result = await H20.extendMeeting(roomId, addMin);
     if (!result.ok && result.conflictWith) {
       const nextM = result.conflictWith;
       const max = result.maxMinutes;
@@ -692,22 +700,22 @@ syncOnlineFlag();
   const customTimesEl = document.getElementById('customTimes');
   const customPreview = document.getElementById('customPreview');
 
-  function refreshCustomTiles() {
+  async function refreshCustomTiles() {
     const anchor = new Date();
-    const next = H20.nextScheduledAfter(roomId, anchor);
+    const next = await H20.nextScheduledAfter(roomId, anchor);
     const capDate = next ? new Date(next.startAt) : null;
     populateTimeGrid(customTimesEl, anchor, capDate);
     customPreview.textContent = 'Selecteer een eindtijd…';
     customPreview.classList.remove('is-error', 'is-ok');
   }
 
-  document.getElementById('customBtn').addEventListener('click', () => {
+  document.getElementById('customBtn').addEventListener('click', async () => {
     prefillEmail(customEmail);
     customMin.value = '';
     document.getElementById('customTitleInput').value = '';
     document.getElementById('customShowTitle').checked = false;
-    refreshCustomTiles();
-    populateUserTiles(document.getElementById('customTilesGrid'), 'custom');
+    await refreshCustomTiles();
+    await populateUserTiles(document.getElementById('customTilesGrid'), 'custom');
     customModal.style.display = 'flex';
     setTimeout(() => customMin.focus(), 50);
   });
@@ -751,15 +759,15 @@ syncOnlineFlag();
       customPreview.classList.remove('is-ok', 'is-error');
     }
   });
-  document.getElementById('customStart').addEventListener('click', () => {
+  document.getElementById('customStart').addEventListener('click', async () => {
     const m = parseInt(customMin.value, 10);
     if (!m || m < 5) { H20.toast({ type: 'warn', message: 'Vul een geldige duur in (minimaal 5 minuten).' }); customMin.focus(); return; }
     const email = customEmail.value.trim();
     if (!H20.isValidEmail(email)) { H20.toast({ type: 'warn', message: 'Vul een geldig e-mailadres in.' }); customEmail.focus(); return; }
-    if (pinRequiredForEmail(email, 'custom')) return;
+    if (await pinRequiredForEmail(email, 'custom')) return;
     const title = document.getElementById('customTitleInput').value.trim() || null;
     const showTitleOnScreen = document.getElementById('customShowTitle').checked;
-    const result = H20.startMeeting(roomId, m, { email, title, showTitleOnScreen });
+    const result = await H20.startMeeting(roomId, m, { email, title, showTitleOnScreen });
     if (!result.ok && result.conflictWith) {
       const next = result.conflictWith;
       H20.toast({
@@ -780,8 +788,8 @@ syncOnlineFlag();
   endBtn.addEventListener('click', () => { endModal.style.display = 'flex'; });
   document.getElementById('endCancel').addEventListener('click', () => { endModal.style.display = 'none'; });
   endModal.addEventListener('click', (e) => { if (e.target === endModal) endModal.style.display = 'none'; });
-  document.getElementById('endConfirm').addEventListener('click', () => {
-    H20.endMeeting(roomId);
+  document.getElementById('endConfirm').addEventListener('click', async () => {
+    await H20.endMeeting(roomId);
     endModal.style.display = 'none';
     H20.toast({ type: 'success', message: 'Vergadering beëindigd. Ruimte is weer beschikbaar.' });
     render();
@@ -837,7 +845,7 @@ syncOnlineFlag();
     planPreview.classList.remove('is-error'); planPreview.classList.add('is-ok');
   }
 
-  function openPlanModal() {
+  async function openPlanModal() {
     const now = new Date();
     const next = new Date(Math.ceil(now.getTime() / (15 * 60000)) * 15 * 60000);
     planDate.value = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`;
@@ -847,7 +855,7 @@ syncOnlineFlag();
     planTitleInput.value = '';
     document.getElementById('planShowTitle').checked = false;
     prefillEmail(planEmail);
-    populateUserTiles(document.getElementById('planTilesGrid'), 'plan');
+    await populateUserTiles(document.getElementById('planTilesGrid'), 'plan');
     updatePlanPreview();
     planModal.style.display = 'flex';
   }
@@ -858,17 +866,17 @@ syncOnlineFlag();
   planEnd.addEventListener('change', updatePlanPreview);
   planDate.addEventListener('change', updatePlanPreview);
 
-  document.getElementById('planConfirm').addEventListener('click', () => {
+  document.getElementById('planConfirm').addEventListener('click', async () => {
     if (!planDate.value || !planStart.value || !planEnd.value) { H20.toast({ type: 'warn', message: 'Vul datum, start- en eindtijd in.' }); return; }
     const times = computePlanTimes();
     if (!times || times.durMin < 5) { H20.toast({ type: 'warn', message: 'Eindtijd moet minimaal 5 minuten na de starttijd liggen.' }); return; }
     const { startAt, endAt, durMin } = times;
     const email = planEmail.value.trim();
     if (!H20.isValidEmail(email)) { H20.toast({ type: 'warn', message: 'Vul een geldig e-mailadres in.' }); planEmail.focus(); return; }
-    if (pinRequiredForEmail(email, 'plan')) return;
+    if (await pinRequiredForEmail(email, 'plan')) return;
     const title = planTitleInput.value.trim() || null;
     const showTitleOnScreen = document.getElementById('planShowTitle').checked;
-    const result = H20.scheduleMeeting(roomId, { startAt, endAt, title, email, showTitleOnScreen });
+    const result = await H20.scheduleMeeting(roomId, { startAt, endAt, title, email, showTitleOnScreen });
     if (!result.ok) {
       let msg = 'Tijdslot bezet.';
       if (result.reason === 'past') msg = 'Hey, dat tijdstip ligt in het verleden. Kies een toekomstig moment.';
@@ -888,10 +896,10 @@ syncOnlineFlag();
   });
 
   // ---------- User tiles + PIN ----------
-  function populateUserTiles(gridEl, context) {
+  async function populateUserTiles(gridEl, context) {
     const block = gridEl.closest('.user-tiles-block');
     if (typeof Auth === 'undefined') { if (block) block.style.display = 'none'; return; }
-    const users = Auth.listUsersForQuickPick();
+    const users = await Auth.listUsersForQuickPick();
     if (!users.length) { if (block) block.style.display = 'none'; return; }
     if (block) block.style.display = '';
     gridEl.innerHTML = users.map((u) => `
@@ -914,11 +922,11 @@ syncOnlineFlag();
 
   // If the typed e-mail belongs to a user WE created who has a PIN, force PIN entry
   // before booking — otherwise typing the e-mail would bypass the pincode.
-  function pinRequiredForEmail(email, context) {
+  async function pinRequiredForEmail(email, context) {
     if (typeof Auth === 'undefined') return false;
     const target = (email || '').trim().toLowerCase();
     if (!target) return false;
-    const match = Auth.listUsersForQuickPick().find(
+    const match = (await Auth.listUsersForQuickPick()).find(
       (u) => u.email && u.email.toLowerCase() === target && u.hasPin
     );
     if (!match) return false;
@@ -971,17 +979,17 @@ syncOnlineFlag();
   });
 
   // Shared booking flow for a selected/verified user (PIN-verified or PIN-less created user).
-  function bookForUser(email, name, context) {
+  async function bookForUser(email, name, context) {
     if (context === 'reserve') {
       const rTitle = document.getElementById('reserveTitleInput').value.trim() || null;
       const rShow = document.getElementById('reserveShowTitle').checked;
-      const r = H20.startMeeting(roomId, reservePendingMin, { email, name, title: rTitle, showTitleOnScreen: rShow });
+      const r = await H20.startMeeting(roomId, reservePendingMin, { email, name, title: rTitle, showTitleOnScreen: rShow });
       if (!r.ok && r.conflictWith) {
         const max = r.maxMinutes;
         H20.toast({
           type: 'error', title: 'Niet mogelijk om te starten',
           message: `Om <strong>${H20.fmtTime(new Date(r.conflictWith.startAt))}</strong> begint een geplande meeting. Max <strong>${max} min</strong> beschikbaar.`,
-          action: max >= 5 ? { label: `Wel ${max} min starten`, onClick: () => { const r2 = H20.startMeeting(roomId, max, { email, name, title: rTitle, showTitleOnScreen: rShow }); if (r2.ok) { reserveModal.style.display = 'none'; render(); } } } : null,
+          action: max >= 5 ? { label: `Wel ${max} min starten`, onClick: async () => { const r2 = await H20.startMeeting(roomId, max, { email, name, title: rTitle, showTitleOnScreen: rShow }); if (r2.ok) { reserveModal.style.display = 'none'; render(); } } } : null,
         });
         return;
       }
@@ -996,7 +1004,7 @@ syncOnlineFlag();
       if (!m || m < 5) { H20.toast({ type: 'warn', message: 'Selecteer eerst een duur.' }); return; }
       const cTitle = document.getElementById('customTitleInput').value.trim() || null;
       const cShow = document.getElementById('customShowTitle').checked;
-      const r = H20.startMeeting(roomId, m, { email, name, title: cTitle, showTitleOnScreen: cShow });
+      const r = await H20.startMeeting(roomId, m, { email, name, title: cTitle, showTitleOnScreen: cShow });
       if (!r.ok && r.conflictWith) {
         H20.toast({
           type: 'error', title: 'Niet mogelijk',
@@ -1021,7 +1029,7 @@ syncOnlineFlag();
       }
       const { startAt, endAt, durMin } = times;
       const pShow = document.getElementById('planShowTitle').checked;
-      const r = H20.scheduleMeeting(roomId, { startAt, endAt, title: planTitleInput.value.trim() || null, email, name, showTitleOnScreen: pShow });
+      const r = await H20.scheduleMeeting(roomId, { startAt, endAt, title: planTitleInput.value.trim() || null, email, name, showTitleOnScreen: pShow });
       if (!r.ok) {
         let msg = 'Tijdslot bezet.';
         if (r.reason === 'past') msg = 'Dat tijdstip ligt in het verleden.';
@@ -1039,10 +1047,8 @@ syncOnlineFlag();
   }
 
   // ---------- Realtime sync ----------
-  window.addEventListener('storage', (e) => {
-    if (!e.key || e.key.startsWith('h20-meetingroom-state')) render();
-  });
-  setInterval(render, 5000);
+  // Centrale DB → poll elke 5s (geen cross-tab StorageEvent meer).
+  setInterval(() => { render(); }, 5000);
 
   render();
 })();

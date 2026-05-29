@@ -1,7 +1,8 @@
 /* ============================================================
-   H20 Meetingroom — Demo / Mock State
-   In productie wordt dit vervangen door Supabase Realtime / WebSocket.
-   API-oppervlak blijft identiek — alleen de transport-laag wisselt.
+   H20 Meetingroom — App state (async REST)
+   Praat met de Node/Express + MySQL backend via /api/...
+   API-oppervlak (window.H20) blijft identiek aan de localStorage-versie,
+   alleen de methoden zijn nu async (Promises).
    ============================================================ */
 
 const ROOMS = {
@@ -11,16 +12,38 @@ const ROOMS = {
   raboroom: { id: 'raboroom', name: 'Raboroom',    subtitle: 'Vergaderruimte · 1e verdieping' },
 };
 
-const STORAGE_KEY = 'h20-meetingroom-state-v3-clean';
 const LAST_EMAIL_KEY = 'h20-last-email';
-const HISTORY_KEY = 'h20-meeting-history';
 const EMAIL_DOMAINS = ['@h20.gg', '@gmail.com', '@hotmail.com', '@outlook.com'];
 
 function isValidEmail(s) {
   return typeof s === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
 }
+// Laatst gebruikte e-mail is puur UX en mag lokaal blijven.
 function getLastEmail() { try { return localStorage.getItem(LAST_EMAIL_KEY) || ''; } catch { return ''; } }
 function setLastEmail(v) { try { localStorage.setItem(LAST_EMAIL_KEY, v); } catch {} }
+
+// ---------- API helper ----------
+async function apiFetch(path, opts = {}) {
+  const init = {
+    method: opts.method || 'GET',
+    credentials: 'include',
+    headers: { 'Accept': 'application/json' },
+  };
+  if (opts.body !== undefined) {
+    init.headers['Content-Type'] = 'application/json';
+    init.body = JSON.stringify(opts.body);
+  }
+  try {
+    const res = await fetch(`/api${path}`, init);
+    let json = null;
+    try { json = await res.json(); } catch { json = null; }
+    if (json == null) return { ok: false, reason: res.ok ? 'empty-response' : 'http-' + res.status, status: res.status };
+    if (json.status === undefined) json.status = res.status;
+    return json;
+  } catch {
+    return { ok: false, reason: 'network' };
+  }
+}
 
 // ---------- helpers ----------
 const pad = (n) => String(n).padStart(2, '0');
@@ -32,116 +55,34 @@ const fmtDate = (d) => {
 };
 const fmtDateShort = (d) => `${pad(d.getDate())}-${pad(d.getMonth()+1)}`;
 const minutesBetween = (a, b) => Math.max(0, Math.round((b - a) / 60000));
-const uuid = () => 'm-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
-
-// ---------- initial state (leeg — geen demo data meer) ----------
-function defaultState() {
-  return {
-    raboroom: { current: null, scheduled: [] },
-    aquarium: { current: null, scheduled: [] },
-    bundled:  { current: null, scheduled: [] },
-    lounge:   { current: null, scheduled: [] },
-  };
-}
-
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      const s = defaultState();
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
-      return s;
-    }
-    return JSON.parse(raw);
-  } catch {
-    return defaultState();
-  }
-}
-
-function saveState(state) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  // Cross-tab realtime simulation
-  window.dispatchEvent(new StorageEvent('storage', { key: STORAGE_KEY }));
-}
 
 // ---------- scheduling ----------
-function getScheduled(roomId) {
-  const state = loadState()[roomId];
-  if (!state) return [];
-  // Auto-purge ended scheduled items
-  const now = new Date();
-  const upcoming = (state.scheduled || []).filter(m => new Date(m.endAt) > now);
-  if (upcoming.length !== (state.scheduled || []).length) {
-    const all = loadState();
-    all[roomId] = { ...state, scheduled: upcoming };
-    saveState(all);
-  }
-  return upcoming.sort((a, b) => new Date(a.startAt) - new Date(b.startAt));
+async function getScheduled(roomId) {
+  const r = await apiFetch(`/rooms/${encodeURIComponent(roomId)}/scheduled`);
+  return r.ok && Array.isArray(r.data) ? r.data : [];
 }
 
-function nextScheduledAfter(roomId, time) {
-  const list = getScheduled(roomId);
-  return list.find(m => new Date(m.startAt) >= time) || null;
+async function nextScheduledAfter(roomId, time) {
+  const list = await getScheduled(roomId);
+  const t = new Date(time);
+  return list.find((m) => new Date(m.startAt) >= t) || null;
 }
 
-// Promote a scheduled meeting to "current" if its time has come
-function promoteScheduledIfDue(roomId, now = new Date()) {
-  const all = loadState();
-  const r = all[roomId];
-  if (!r) return false;
-  // Skip if a current meeting is still active
-  if (r.current && new Date(r.current.busyUntil) > now) return false;
-  const due = (r.scheduled || []).find(m => new Date(m.startAt) <= now && new Date(m.endAt) > now);
-  if (!due) return false;
-  all[roomId] = {
-    current: { sessionId: uuid(), startedAt: due.startAt, busyUntil: due.endAt, title: due.title || null, email: due.email || '', name: due.name || null, showTitleOnScreen: !!(due.showTitleOnScreen && due.title) },
-    scheduled: r.scheduled.filter(m => m.id !== due.id),
-  };
-  saveState(all);
-  return true;
+// ---------- history ----------
+async function getHistory({ roomId = null, from = null, to = null } = {}) {
+  const qs = new URLSearchParams();
+  if (roomId) qs.set('roomId', roomId);
+  if (from) qs.set('from', new Date(from).toISOString());
+  if (to) qs.set('to', new Date(to).toISOString());
+  const suffix = qs.toString() ? `?${qs.toString()}` : '';
+  const r = await apiFetch(`/history${suffix}`);
+  return r.ok && Array.isArray(r.data) ? r.data : [];
 }
 
-// ---------- history log ----------
-function loadHistory() {
-  try { return JSON.parse(localStorage.getItem(HISTORY_KEY) || '[]'); } catch { return []; }
+async function clearHistory() {
+  const r = await apiFetch('/history', { method: 'DELETE' });
+  return !!r.ok;
 }
-function saveHistory(arr) { localStorage.setItem(HISTORY_KEY, JSON.stringify(arr)); }
-
-function logSession(roomId, current, endedAt, endReason) {
-  if (!current || !current.startedAt) return;
-  // Dedup: if a row with same sessionId already exists, skip.
-  const sid = current.sessionId || (current.startedAt + '|' + roomId);
-  const history = loadHistory();
-  if (history.some((r) => r.sessionId === sid)) return;
-  const start = new Date(current.startedAt);
-  const end = new Date(endedAt);
-  const durMin = Math.max(0, Math.round((end - start) / 60000));
-  const room = ROOMS[roomId];
-  history.push({
-    sessionId: sid,
-    roomId,
-    roomName: room ? room.name : roomId,
-    email: current.email || '',
-    title: current.title || '',
-    startedAt: start.toISOString(),
-    endedAt: end.toISOString(),
-    durationMin: durMin,
-    endReason: endReason || 'ended',
-    loggedAt: new Date().toISOString(),
-  });
-  // keep most recent 2000 sessions
-  saveHistory(history.slice(-2000));
-}
-
-function getHistory({ roomId = null, from = null, to = null } = {}) {
-  let list = loadHistory();
-  if (roomId) list = list.filter((r) => r.roomId === roomId);
-  if (from) { const f = new Date(from); list = list.filter((r) => new Date(r.startedAt) >= f); }
-  if (to)   { const t = new Date(to);   list = list.filter((r) => new Date(r.startedAt) <= t); }
-  return list.sort((a, b) => new Date(b.startedAt) - new Date(a.startedAt));
-}
-
-function clearHistory() { saveHistory([]); }
 
 function historyToCsv(rows, opts = {}) {
   const headers = ['Tijd','Naam','E-mail','Meeting','Locatie','Duur (min)'];
@@ -160,76 +101,62 @@ function historyToCsv(rows, opts = {}) {
 }
 
 // ---------- status ----------
-function getRoomStatus(roomId, now = new Date()) {
-  promoteScheduledIfDue(roomId, now);
-  const state = loadState()[roomId];
-  if (!state || !state.current) return { status: 'available' };
-  const until = new Date(state.current.busyUntil);
-  if (until <= now) {
-    // expired
-    logSession(roomId, state.current, until, 'auto-expired');
-    const s = loadState();
-    s[roomId] = { ...state, current: null };
-    saveState(s);
-    return { status: 'available' };
-  }
+// Geeft busyUntil/startedAt terug als Date-objecten (zelfde contract als de
+// oude localStorage-versie), zodat dashboard/tablet ongewijzigd blijven.
+async function getRoomStatus(roomId) {
+  const r = await apiFetch(`/rooms/${encodeURIComponent(roomId)}/status`);
+  if (!r.ok || !r.data) return { status: 'available' };
+  const d = r.data;
+  if (d.status !== 'busy') return { status: 'available' };
+  const now = new Date();
+  const until = new Date(d.busyUntil);
   return {
     status: 'busy',
     busyUntil: until,
-    startedAt: state.current.startedAt ? new Date(state.current.startedAt) : now,
-    minutesLeft: minutesBetween(now, until),
-    title: state.current.title || null,
+    startedAt: d.startedAt ? new Date(d.startedAt) : now,
+    minutesLeft: typeof d.minutesLeft === 'number' ? d.minutesLeft : minutesBetween(now, until),
+    title: d.title || null,
+    email: d.email || '',
+    name: d.name || null,
+    showTitleOnScreen: !!d.showTitleOnScreen,
   };
 }
 
-// ---------- conflict checks ----------
-// canStart: check if a new meeting of `durationMin` from now fits before next scheduled slot
-function canStart(roomId, durationMin, now = new Date()) {
+// ---------- conflict checks (client-side UI-preview; server hervalideert) ----------
+async function canStart(roomId, durationMin, now = new Date()) {
   const proposedEnd = new Date(now.getTime() + durationMin * 60000);
-  const next = nextScheduledAfter(roomId, now);
+  const next = await nextScheduledAfter(roomId, now);
   if (!next) return { ok: true, maxMinutes: null };
   const nextStart = new Date(next.startAt);
   if (proposedEnd <= nextStart) return { ok: true, maxMinutes: minutesBetween(now, nextStart) };
-  return {
-    ok: false,
-    maxMinutes: minutesBetween(now, nextStart),
-    conflictWith: next,
-  };
+  return { ok: false, maxMinutes: minutesBetween(now, nextStart), conflictWith: next };
 }
 
-// canExtend: from current.busyUntil + addMin, must not pass next scheduled
-function canExtend(roomId, addMin, now = new Date()) {
-  const status = getRoomStatus(roomId, now);
+async function canExtend(roomId, addMin) {
+  const status = await getRoomStatus(roomId);
   if (status.status !== 'busy') return { ok: false, reason: 'not-busy' };
   const proposedEnd = new Date(status.busyUntil.getTime() + addMin * 60000);
-  const next = nextScheduledAfter(roomId, status.busyUntil);
+  const next = await nextScheduledAfter(roomId, status.busyUntil);
   if (!next) return { ok: true, maxMinutes: null };
   const nextStart = new Date(next.startAt);
   if (proposedEnd <= nextStart) return { ok: true, maxMinutes: minutesBetween(status.busyUntil, nextStart) };
-  return {
-    ok: false,
-    maxMinutes: minutesBetween(status.busyUntil, nextStart),
-    conflictWith: next,
-  };
+  return { ok: false, maxMinutes: minutesBetween(status.busyUntil, nextStart), conflictWith: next };
 }
 
-// canSchedule: a new scheduled meeting must not overlap current or other scheduled
-function canSchedule(roomId, startAt, endAt) {
-  const all = loadState()[roomId];
-  if (!all) return { ok: false, reason: 'no-room' };
+async function canSchedule(roomId, startAt, endAt) {
   const start = new Date(startAt), end = new Date(endAt);
   if (end <= start) return { ok: false, reason: 'invalid-range', message: 'Eindtijd moet na starttijd liggen.' };
   if (start < new Date()) return { ok: false, reason: 'past', message: 'Starttijd ligt in het verleden.' };
 
-  // overlap with current
-  if (all.current) {
-    const cs = new Date(all.current.startedAt), ce = new Date(all.current.busyUntil);
+  const status = await getRoomStatus(roomId);
+  if (status.status === 'busy') {
+    const cs = status.startedAt, ce = status.busyUntil;
     if (start < ce && end > cs) {
-      return { ok: false, reason: 'overlap-current', conflictWith: { startAt: cs, endAt: ce, title: all.current.title } };
+      return { ok: false, reason: 'overlap-current', conflictWith: { startAt: cs, endAt: ce, title: status.title } };
     }
   }
-  // overlap with scheduled
-  for (const m of (all.scheduled || [])) {
+  const list = await getScheduled(roomId);
+  for (const m of list) {
     const ms = new Date(m.startAt), me = new Date(m.endAt);
     if (start < me && end > ms) {
       return { ok: false, reason: 'overlap-scheduled', conflictWith: m };
@@ -239,72 +166,46 @@ function canSchedule(roomId, startAt, endAt) {
 }
 
 // ---------- mutations ----------
-function startMeeting(roomId, durationMin, { title = null, email = null, name = null, showTitleOnScreen = false } = {}) {
+async function startMeeting(roomId, durationMin, { title = null, email = null, name = null, showTitleOnScreen = false } = {}) {
   if (!isValidEmail(email)) return { ok: false, reason: 'invalid-email' };
-  const check = canStart(roomId, durationMin);
-  if (!check.ok) return { ok: false, ...check };
-  const now = new Date();
-  const until = new Date(now.getTime() + durationMin * 60000);
-  const sessionId = uuid();
-  const s = loadState();
-  s[roomId] = {
-    ...s[roomId],
-    current: { sessionId, startedAt: now.toISOString(), busyUntil: until.toISOString(), title, email: email.trim(), name: name ? String(name).trim() : null, showTitleOnScreen: !!(showTitleOnScreen && title) },
-  };
-  saveState(s);
-  setLastEmail(email.trim());
-  return { ok: true };
+  const r = await apiFetch(`/rooms/${encodeURIComponent(roomId)}/start`, {
+    method: 'POST',
+    body: { durationMin, title, email: email.trim(), name: name ? String(name).trim() : null, showTitleOnScreen: !!(showTitleOnScreen && title) },
+  });
+  if (r.ok) setLastEmail(email.trim());
+  return r;
 }
 
-function extendMeeting(roomId, addMin) {
-  const check = canExtend(roomId, addMin);
-  if (!check.ok) return { ok: false, ...check };
-  const s = loadState();
-  const cur = s[roomId]?.current;
-  if (!cur) return { ok: false, reason: 'not-busy' };
-  const next = new Date(new Date(cur.busyUntil).getTime() + addMin * 60000);
-  s[roomId] = { ...s[roomId], current: { ...cur, busyUntil: next.toISOString() } };
-  saveState(s);
-  return { ok: true, newEnd: next };
+async function extendMeeting(roomId, addMin) {
+  const r = await apiFetch(`/rooms/${encodeURIComponent(roomId)}/extend`, { method: 'POST', body: { addMin } });
+  if (r.ok && r.newEnd) return { ok: true, newEnd: new Date(r.newEnd) };
+  return r;
 }
 
-function endMeeting(roomId) {
-  const s = loadState();
-  const cur = s[roomId]?.current;
-  if (cur) logSession(roomId, cur, new Date(), 'ended-manually');
-  s[roomId] = { ...s[roomId], current: null };
-  saveState(s);
+async function endMeeting(roomId) {
+  return apiFetch(`/rooms/${encodeURIComponent(roomId)}/end`, { method: 'POST' });
 }
 
-function scheduleMeeting(roomId, { startAt, endAt, title, email, name, showTitleOnScreen = false }) {
+async function scheduleMeeting(roomId, { startAt, endAt, title, email, name, showTitleOnScreen = false }) {
   if (!isValidEmail(email)) return { ok: false, reason: 'invalid-email' };
-  const check = canSchedule(roomId, startAt, endAt);
-  if (!check.ok) return { ok: false, ...check };
-  const s = loadState();
-  const room = s[roomId] || { current: null, scheduled: [] };
-  const meeting = {
-    id: uuid(),
-    startAt: new Date(startAt).toISOString(),
-    endAt: new Date(endAt).toISOString(),
-    title: title || null,
-    email: email.trim(),
-    name: name ? String(name).trim() : null,
-    showTitleOnScreen: !!(showTitleOnScreen && title),
-    createdAt: new Date().toISOString(),
-  };
-  s[roomId] = { ...room, scheduled: [...(room.scheduled || []), meeting] };
-  saveState(s);
-  setLastEmail(email.trim());
-  return { ok: true, meeting };
+  const r = await apiFetch(`/rooms/${encodeURIComponent(roomId)}/schedule`, {
+    method: 'POST',
+    body: {
+      startAt: new Date(startAt).toISOString(),
+      endAt: new Date(endAt).toISOString(),
+      title: title || null,
+      email: email.trim(),
+      name: name ? String(name).trim() : null,
+      showTitleOnScreen: !!(showTitleOnScreen && title),
+    },
+  });
+  if (r.ok) setLastEmail(email.trim());
+  return r;
 }
 
-function cancelScheduled(roomId, meetingId) {
-  const s = loadState();
-  const room = s[roomId];
-  if (!room) return false;
-  s[roomId] = { ...room, scheduled: (room.scheduled || []).filter(m => m.id !== meetingId) };
-  saveState(s);
-  return true;
+async function cancelScheduled(roomId, meetingId) {
+  const r = await apiFetch(`/rooms/${encodeURIComponent(roomId)}/scheduled/${encodeURIComponent(meetingId)}`, { method: 'DELETE' });
+  return !!r.ok;
 }
 
 // ---------- toast ----------
@@ -362,9 +263,9 @@ function startClock(timeEl, dateEl) {
 
 window.H20 = {
   ROOMS, EMAIL_DOMAINS,
+  apiFetch,
   fmtTime, fmtDate, fmtDateShort, minutesBetween,
   isValidEmail, getLastEmail, setLastEmail,
-  loadState, saveState,
   getRoomStatus, getScheduled, nextScheduledAfter,
   canStart, canExtend, canSchedule,
   startMeeting, extendMeeting, endMeeting,

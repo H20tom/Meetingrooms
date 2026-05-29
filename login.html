@@ -122,8 +122,9 @@
 
   const params = new URLSearchParams(location.search);
   const inviteToken    = params.get('invite');
-  const resetPayload   = params.get('reset');
-  const pinSetupPayload = params.get('setpin');
+  const resetToken     = params.get('reset');
+  const resetEmailParam = params.get('email');
+  const pinSetupToken  = params.get('setpin');
 
   const loginForm    = document.getElementById('loginForm');
   const forgotForm   = document.getElementById('forgotForm');
@@ -135,15 +136,25 @@
     [loginForm, forgotForm, resetForm, inviteForm, pinSetupForm].forEach((f) => f.style.display = f === form ? '' : 'none');
   }
 
+  // Sta alleen lokale, relatieve doelen toe (geen open-redirect naar externe sites).
+  function safeNext(next) {
+    if (!next) return 'dashboard.html';
+    // Weiger absolute URLs, protocol-relative (//) en pad-escapes.
+    if (/^[a-z][a-z0-9+.-]*:/i.test(next) || next.startsWith('//') || next.startsWith('/') || next.includes('..')) {
+      return 'dashboard.html';
+    }
+    return next;
+  }
+
   // INVITE flow takes priority over auto-redirect
   if (inviteToken) {
-    const inv = Auth.getInvite(inviteToken);
+    const inv = await Auth.getInvite(inviteToken);
     if (!inv) {
       H20.toast({ type: 'error', title: 'Ongeldige uitnodiging',
         message: 'Deze uitnodigingslink is verlopen of bestaat niet meer. Vraag een admin om een nieuwe.', duration: 12000 });
     } else {
       // If currently logged in as someone else, log out so the invite can land cleanly
-      if (Auth.getCurrentUser()) Auth.logout();
+      if (await Auth.getCurrentUser()) await Auth.logout();
       document.getElementById('inviteName').value = inv.name;
       document.getElementById('inviteEmailField').value = inv.email;
       document.getElementById('inviteSub').textContent =
@@ -170,20 +181,19 @@
   }
 
   // RESET LINK flow (admin-generated reset link)
-  if (resetPayload) {
-    const decoded = Auth.decodeResetLink(resetPayload);
-    if (!decoded) {
+  if (resetToken) {
+    if (!resetEmailParam) {
       H20.toast({ type: 'error', title: 'Ongeldige reset-link',
-        message: 'Deze reset-link is verlopen of ongeldig. Vraag een admin om een nieuwe.', duration: 12000 });
+        message: 'Deze reset-link is onvolledig. Vraag een admin om een nieuwe.', duration: 12000 });
     } else {
-      if (Auth.getCurrentUser()) Auth.logout();
-      document.getElementById('resetEmail').value = decoded.email;
-      document.getElementById('resetToken').value = decoded.token;
+      if (await Auth.getCurrentUser()) await Auth.logout();
+      document.getElementById('resetEmail').value = resetEmailParam;
+      document.getElementById('resetToken').value = resetToken;
       show(resetForm);
       resetForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const pwd = document.getElementById('resetPwd').value;
-        const res = await Auth.resetPasswordWithToken(decoded.email, decoded.token, pwd);
+        const res = await Auth.resetPasswordWithToken(resetEmailParam, resetToken, pwd);
         if (!res.ok) {
           const map = {
             'invalid-token': 'Reset-link is ongeldig.',
@@ -202,42 +212,37 @@
   }
 
   // PIN SETUP flow
-  if (pinSetupPayload) {
-    const decoded = Auth.decodePinSetupPayload(pinSetupPayload);
-    if (!decoded) {
-      H20.toast({ type: 'error', title: 'Ongeldige PIN-link',
-        message: 'Deze link is verlopen of ongeldig. Vraag een admin om een nieuwe.', duration: 12000 });
-    } else {
-      document.getElementById('pinSetupName').value = decoded.name;
-      document.getElementById('pinSetupSub').textContent =
-        `Hoi ${decoded.name}! Kies een pincode van 4 tot 6 cijfers waarmee je snel kunt inchecken bij een vergaderruimte.`;
-      show(pinSetupForm);
-      pinSetupForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const pin  = document.getElementById('pinSetupPin').value;
-        const pin2 = document.getElementById('pinSetupPin2').value;
-        if (!/^\d{4,6}$/.test(pin)) {
-          H20.toast({ type: 'error', message: 'Pincode moet uit 4 tot 6 cijfers bestaan.' }); return;
-        }
-        if (pin !== pin2) {
-          H20.toast({ type: 'error', message: 'Pincodes komen niet overeen.' }); return;
-        }
-        const res = await Auth.consumePinSetup(pinSetupPayload, pin);
-        if (!res.ok) {
-          const map = { 'invalid-or-expired': 'Link is verlopen.', 'invalid-pin': 'Ongeldige pincode.', 'not-found': 'Gebruiker niet gevonden.' };
-          H20.toast({ type: 'error', message: map[res.reason] || 'Instellen mislukt.' }); return;
-        }
-        H20.toast({ type: 'success', message: `Pincode ingesteld voor ${res.user.name}! Je kunt nu snel inchecken bij de vergaderruimtes.`, duration: 8000 });
-        setTimeout(() => location.replace('login.html'), 1000);
-      });
-      return;
-    }
+  if (pinSetupToken) {
+    // Verberg het (lege) naam-veld — de naam zit veilig server-side achter het token.
+    const pinNameField = document.getElementById('pinSetupName');
+    if (pinNameField && pinNameField.closest('.field')) pinNameField.closest('.field').style.display = 'none';
+    document.getElementById('pinSetupSub').textContent =
+      'Kies een pincode van 4 tot 6 cijfers waarmee je snel kunt inchecken bij een vergaderruimte.';
+    show(pinSetupForm);
+    pinSetupForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const pin  = document.getElementById('pinSetupPin').value;
+      const pin2 = document.getElementById('pinSetupPin2').value;
+      if (!/^\d{4,6}$/.test(pin)) {
+        H20.toast({ type: 'error', message: 'Pincode moet uit 4 tot 6 cijfers bestaan.' }); return;
+      }
+      if (pin !== pin2) {
+        H20.toast({ type: 'error', message: 'Pincodes komen niet overeen.' }); return;
+      }
+      const res = await Auth.consumePinSetup(pinSetupToken, pin);
+      if (!res.ok) {
+        const map = { 'invalid-or-expired': 'Link is verlopen.', 'invalid-pin': 'Ongeldige pincode.', 'not-found': 'Gebruiker niet gevonden.' };
+        H20.toast({ type: 'error', message: map[res.reason] || 'Instellen mislukt.' }); return;
+      }
+      H20.toast({ type: 'success', message: `Pincode ingesteld voor ${res.user.name}! Je kunt nu snel inchecken bij de vergaderruimtes.`, duration: 8000 });
+      setTimeout(() => location.replace('login.html'), 1000);
+    });
+    return;
   }
 
   // Already logged in? Redirect.
-  if (Auth.getCurrentUser()) {
-    const next = params.get('next') || 'dashboard.html';
-    location.replace(next);
+  if (await Auth.getCurrentUser()) {
+    location.replace(safeNext(params.get('next')));
     return;
   }
 
@@ -258,14 +263,14 @@
       return;
     }
     H20.toast({ type: 'success', message: `Welkom terug, ${res.user.name}.` });
-    const next = new URLSearchParams(location.search).get('next') || 'dashboard.html';
+    const next = safeNext(new URLSearchParams(location.search).get('next'));
     setTimeout(() => location.replace(next), 400);
   });
 
   forgotForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const email = document.getElementById('forgotEmail').value;
-    const res = Auth.requestPasswordReset(email);
+    const res = await Auth.requestPasswordReset(email);
     if (!res.ok) {
       H20.toast({ type: 'error', message: 'Onbekend e-mailadres.' });
       return;
@@ -274,7 +279,7 @@
     H20.toast({
       type: 'info',
       title: 'Reset-code aangemaakt',
-      message: `Demo: code is <strong>${res.token}</strong> (geldig 30 min). In productie wordt deze gemaild.`,
+      message: `Demo: code is <strong>${res.token}</strong> (geldig 24 uur). In productie wordt deze gemaild.`,
       duration: 20000,
     });
     document.getElementById('resetEmail').value = email;

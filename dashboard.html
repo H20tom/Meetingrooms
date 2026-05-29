@@ -119,13 +119,12 @@ if ('serviceWorker' in navigator) {
 </script>
 <script>
 (async function () {
-  await Auth.ensureSeed();
-  const me = Auth.requireLogin();
+  const me = await Auth.requireLogin();
   if (!me) return;
   document.getElementById('dashUser').textContent = `${me.name} (${me.role})`;
-  if (Auth.isAdmin()) document.getElementById('adminLink').style.display = '';
-  document.getElementById('logoutBtn').addEventListener('click', () => {
-    Auth.logout();
+  if (await Auth.isAdmin()) document.getElementById('adminLink').style.display = '';
+  document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await Auth.logout();
     location.replace('login.html');
   });
 
@@ -136,7 +135,7 @@ if ('serviceWorker' in navigator) {
 
   H20.startClock(document.getElementById('clock'), document.getElementById('date'));
 
-  function cardHTML(room, s) {
+  function cardHTML(room, s, scheduledList) {
     const isAvail = s.status === 'available';
     const status = isAvail ? 'Beschikbaar' : 'Bezet';
 
@@ -158,7 +157,7 @@ if ('serviceWorker' in navigator) {
       detail = `Nog <strong>${human}</strong> bezet.`;
       metaStart = H20.fmtTime(start);
       metaEnd   = H20.fmtTime(end);
-      const email = (H20.loadState()[room.id]?.current?.email) || null;
+      const email = s.email || null;
       if (email) {
         bookedByHTML = `<div class="room-card__booked">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -194,13 +193,13 @@ if ('serviceWorker' in navigator) {
           </div>
         </div>
         ${!isAvail ? `<div class="room-card__actions"><button class="btn btn-danger btn-sm" data-end-now="${room.id}">Beëindigen</button></div>` : ''}
-        ${scheduleHTML(room.id)}
+        ${scheduleHTML(room.id, scheduledList)}
       </article>
     `;
   }
 
-  function scheduleHTML(roomId) {
-    const list = H20.getScheduled(roomId);
+  function scheduleHTML(roomId, list) {
+    list = list || [];
     const today = new Date(); today.setHours(0,0,0,0);
     const items = list.slice(0, 4).map(m => {
       const s = new Date(m.startAt), e = new Date(m.endAt);
@@ -231,24 +230,38 @@ if ('serviceWorker' in navigator) {
     `;
   }
 
-  function render() {
-    const now = new Date();
-    let avail = 0, busy = 0, soonest = null;
+  let rendering = false;
+  async function render() {
+    if (rendering) return;
+    rendering = true;
+    try {
+      let avail = 0, busy = 0, soonest = null;
 
-    grid.innerHTML = Object.values(H20.ROOMS).map((room) => {
-      const s = H20.getRoomStatus(room.id, now);
-      if (s.status === 'available') {
-        avail++;
-      } else {
-        busy++;
-        if (!soonest || s.busyUntil < soonest) soonest = s.busyUntil;
-      }
-      return cardHTML(room, s);
-    }).join('');
+      const rooms = Object.values(H20.ROOMS);
+      const data = await Promise.all(rooms.map(async (room) => {
+        const [s, scheduledList] = await Promise.all([
+          H20.getRoomStatus(room.id),
+          H20.getScheduled(room.id),
+        ]);
+        return { room, s, scheduledList };
+      }));
 
-    availCountEl.textContent = avail;
-    busyCountEl.textContent  = busy;
-    nextFreeEl.textContent   = avail > 0 ? 'nu' : (soonest ? H20.fmtTime(soonest) : '—');
+      grid.innerHTML = data.map(({ room, s, scheduledList }) => {
+        if (s.status === 'available') {
+          avail++;
+        } else {
+          busy++;
+          if (!soonest || s.busyUntil < soonest) soonest = s.busyUntil;
+        }
+        return cardHTML(room, s, scheduledList);
+      }).join('');
+
+      availCountEl.textContent = avail;
+      busyCountEl.textContent  = busy;
+      nextFreeEl.textContent   = avail > 0 ? 'nu' : (soonest ? H20.fmtTime(soonest) : '—');
+    } finally {
+      rendering = false;
+    }
   }
 
   const endModal     = document.getElementById('dashEndModal');
@@ -269,16 +282,17 @@ if ('serviceWorker' in navigator) {
   }
   document.getElementById('dashEndCancel').addEventListener('click', closeEndModal);
   endModal.addEventListener('click', (e) => { if (e.target === endModal) closeEndModal(); });
-  endConfirmBtn.addEventListener('click', () => {
+  endConfirmBtn.addEventListener('click', async () => {
     if (!pendingEndRoomId) { closeEndModal(); return; }
     const room = H20.ROOMS[pendingEndRoomId];
-    H20.endMeeting(pendingEndRoomId);
-    H20.toast({ type: 'success', title: 'Beëindigd', message: `${room ? room.name : 'Ruimte'} is weer beschikbaar.` });
+    const roomId = pendingEndRoomId;
     closeEndModal();
-    render();
+    await H20.endMeeting(roomId);
+    H20.toast({ type: 'success', title: 'Beëindigd', message: `${room ? room.name : 'Ruimte'} is weer beschikbaar.` });
+    await render();
   });
 
-  grid.addEventListener('click', (e) => {
+  grid.addEventListener('click', async (e) => {
     const endBtn = e.target.closest('button[data-end-now]');
     if (endBtn) {
       openEndModal(endBtn.dataset.endNow);
@@ -288,9 +302,9 @@ if ('serviceWorker' in navigator) {
     if (!btn) return;
     const id = btn.dataset.cancel;
     const roomId = btn.dataset.room;
-    H20.cancelScheduled(roomId, id);
+    await H20.cancelScheduled(roomId, id);
     H20.toast({ type: 'info', message: 'Geplande vergadering geannuleerd.' });
-    render();
+    await render();
   });
 
   // ---------- Plan meeting modal ----------
@@ -402,7 +416,7 @@ if ('serviceWorker' in navigator) {
   document.getElementById('dashPlanCancel').addEventListener('click', () => { planModal.style.display = 'none'; });
   planModal.addEventListener('click', (e) => { if (e.target === planModal) planModal.style.display = 'none'; });
 
-  document.getElementById('dashPlanConfirm').addEventListener('click', () => {
+  document.getElementById('dashPlanConfirm').addEventListener('click', async () => {
     const roomId = planRoom.value;
     const room = H20.ROOMS[roomId];
     if (!room) { H20.toast({ type: 'warn', message: 'Kies een ruimte.' }); return; }
@@ -420,7 +434,7 @@ if ('serviceWorker' in navigator) {
 
     const { startAt, endAt, durMin } = times;
     const showTitleOnScreen = document.getElementById('dashPlanShowTitle').checked;
-    const result = H20.scheduleMeeting(roomId, {
+    const result = await H20.scheduleMeeting(roomId, {
       startAt, endAt,
       title: planTitleIn.value.trim() || null,
       email, name,
@@ -441,12 +455,11 @@ if ('serviceWorker' in navigator) {
     }
     planModal.style.display = 'none';
     H20.toast({ type: 'success', title: 'Ingepland', message: `${room.name} · ${planDate.value} om ${planStart.value} (${durMin} min) — ${name}.` });
-    render();
+    await render();
   });
 
-  window.addEventListener('storage', render);
-  setInterval(render, 5000);
-  render();
+  setInterval(() => { render(); }, 5000);
+  await render();
 })();
 </script>
 </body>

@@ -229,20 +229,19 @@
 <script src="kiosk.js"></script>
 <script>
 (async function () {
-  await Auth.ensureSeed();
-  const me = Auth.requireAdmin();
+  const me = await Auth.requireAdmin();
   if (!me) return;
   document.getElementById('adminMe').textContent = `${me.name} (${me.email})`;
 
-  document.getElementById('logoutBtn').addEventListener('click', () => {
-    Auth.logout();
+  document.getElementById('logoutBtn').addEventListener('click', async () => {
+    await Auth.logout();
     location.replace('login.html');
   });
 
   // ---------- Users ----------
   const tbody = document.querySelector('#usersTable tbody');
-  function renderUsers() {
-    const users = Auth.listUsers();
+  async function renderUsers() {
+    const users = await Auth.listUsers();
     tbody.innerHTML = users.map((u) => `
       <tr data-id="${u.id}">
         <td>${u.name}</td>
@@ -309,22 +308,22 @@
     }
     H20.toast({ type: 'success', message: editingId ? 'Gebruiker bijgewerkt.' : 'Gebruiker toegevoegd.' });
     userModal.style.display = 'none';
-    renderUsers();
-    renderResets();
+    await renderUsers();
+    await renderResets();
   });
 
-  tbody.addEventListener('click', (e) => {
+  tbody.addEventListener('click', async (e) => {
     const editId = e.target.dataset.edit;
     const remId = e.target.dataset.remove;
     const resetId = e.target.dataset.reset;
     if (editId) {
-      const u = Auth.listUsers().find((x) => x.id === editId);
+      const u = (await Auth.listUsers()).find((x) => x.id === editId);
       if (u) openUserModal(u);
     } else if (remId) {
-      const u = Auth.listUsers().find((x) => x.id === remId);
+      const u = (await Auth.listUsers()).find((x) => x.id === remId);
       if (!u) return;
       if (!confirm(`Verwijder gebruiker ${u.name} (${u.email})?`)) return;
-      const res = Auth.removeUser(remId);
+      const res = await Auth.removeUser(remId);
       if (!res.ok) {
         const map = {
           'cannot-remove-self': 'Je kunt jezelf niet verwijderen.',
@@ -335,29 +334,29 @@
         return;
       }
       H20.toast({ type: 'success', message: 'Gebruiker verwijderd.' });
-      renderUsers();
+      await renderUsers();
     } else if (resetId) {
-      const u = Auth.listUsers().find((x) => x.id === resetId);
+      const u = (await Auth.listUsers()).find((x) => x.id === resetId);
       if (!u) return;
-      const res = Auth.requestPasswordReset(u.email);
+      const res = await Auth.requestPasswordReset(u.email);
       if (!res.ok) {
         H20.toast({ type: 'error', message: 'Reset aanmaken mislukt.' });
         return;
       }
       openResetLinkModal(u, res);
-      renderResets();
+      await renderResets();
     } else if (e.target.dataset.pin) {
-      const u = Auth.listUsers().find((x) => x.id === e.target.dataset.pin);
+      const u = (await Auth.listUsers()).find((x) => x.id === e.target.dataset.pin);
       if (!u) return;
-      const res = Auth.createPinSetupLink(u.id);
+      const res = await Auth.createPinSetupLink(u.id);
       if (!res.ok) { H20.toast({ type: 'error', message: 'PIN-link aanmaken mislukt.' }); return; }
       openPinLinkModal(u, res);
     }
   });
 
-  function renderResets() {
+  async function renderResets() {
     const rb = document.querySelector('#resetsTable tbody');
-    const list = Auth.listPendingResets();
+    const list = await Auth.listPendingResets();
     rb.innerHTML = list.length ? list.map((r) => `
       <tr><td>${r.email}</td><td><code>${r.token}</code></td>
       <td>${new Date(r.expiresAt).toLocaleString('nl-NL')}</td></tr>
@@ -408,7 +407,7 @@
   resetLinkModal.addEventListener('click', (e) => { if (e.target === resetLinkModal) resetLinkModal.style.display = 'none'; });
 
   function openResetLinkModal(user, res) {
-    const validHours = Math.round((new Date(res.expiresAt) - Date.now()) / 3600000);
+    const validHours = res.expiresAt ? Math.round((new Date(res.expiresAt) - Date.now()) / 3600000) : 24;
     const message =
 `Hoi ${user.name},
 
@@ -493,12 +492,12 @@ H20 Esports Campus`;
     });
   }
 
-  document.getElementById('inviteSend').addEventListener('click', () => {
+  document.getElementById('inviteSend').addEventListener('click', async () => {
     const name = invName.value.trim();
     const email = invEmail.value.trim();
     if (!name) { H20.toast({ type: 'warn', message: 'Naam is verplicht.' }); return; }
     if (!H20.isValidEmail(email)) { H20.toast({ type: 'warn', message: 'Ongeldig e-mailadres.' }); return; }
-    const res = Auth.createInvite({ name, email, role: invRole.value });
+    const res = await Auth.createInvite({ name, email, role: invRole.value });
     if (!res.ok) {
       const map = { 'duplicate-email': 'Er bestaat al een gebruiker met dit e-mailadres.',
                     'forbidden': 'Geen rechten.', 'missing-fields': 'Velden ontbreken.' };
@@ -543,12 +542,12 @@ H20 Esports Campus`;
       copyToClipboard(message, 'Bericht gekopieerd — plak in WhatsApp/mail/Slack.');
     });
     H20.toast({ type: 'success', message: `Uitnodigingslink klaar voor ${email}.` });
-    renderInvites();
+    await renderInvites();
   });
 
-  function renderInvites() {
+  async function renderInvites() {
     const tb = document.querySelector('#invitesTable tbody');
-    const list = Auth.listInvites();
+    const list = await Auth.listInvites();
     if (!list.length) {
       tb.innerHTML = `<tr><td colspan="5" class="empty">Geen openstaande uitnodigingen.</td></tr>`;
       return;
@@ -569,15 +568,15 @@ H20 Esports Campus`;
       `;
     }).join('');
   }
-  document.querySelector('#invitesTable tbody').addEventListener('click', (e) => {
+  document.querySelector('#invitesTable tbody').addEventListener('click', async (e) => {
     const copyLink = e.target.dataset.copy;
     const revoke = e.target.dataset.revoke;
     if (copyLink) {
       navigator.clipboard.writeText(copyLink).then(() => H20.toast({ type: 'success', message: 'Link gekopieerd.' }));
     } else if (revoke) {
       if (!confirm('Uitnodiging intrekken?')) return;
-      Auth.revokeInvite(revoke);
-      renderInvites();
+      await Auth.revokeInvite(revoke);
+      await renderInvites();
       H20.toast({ type: 'info', message: 'Uitnodiging ingetrokken.' });
     }
   });
@@ -609,10 +608,10 @@ H20 Esports Campus`;
   }
 
   // Snelle naam-lookup per e-mail (case-insensitive)
-  function buildEmailNameMap() {
+  async function buildEmailNameMap() {
     const map = new Map();
     try {
-      Auth.listUsers().forEach((u) => {
+      (await Auth.listUsers()).forEach((u) => {
         if (u && u.email) map.set(u.email.toLowerCase(), u.name || '');
       });
     } catch {}
@@ -629,10 +628,10 @@ H20 Esports Campus`;
     return `${date}, ${time}`;
   }
 
-  function renderHistory() {
-    const rows = getFilteredHistory();
+  async function renderHistory() {
+    const rows = await getFilteredHistory();
     const tb = document.querySelector('#historyTable tbody');
-    const emailMap = buildEmailNameMap();
+    const emailMap = await buildEmailNameMap();
     if (!rows.length) {
       tb.innerHTML = `<tr><td colspan="6" class="empty">Geen sessies in deze periode.</td></tr>`;
     } else {
@@ -664,10 +663,10 @@ H20 Esports Campus`;
   histFrom.addEventListener('change', renderHistory);
   histTo.addEventListener('change', renderHistory);
 
-  document.getElementById('historyExport').addEventListener('click', () => {
-    const rows = getFilteredHistory();
+  document.getElementById('historyExport').addEventListener('click', async () => {
+    const rows = await getFilteredHistory();
     if (!rows.length) { H20.toast({ type: 'warn', message: 'Geen rijen om te exporteren.' }); return; }
-    const emailMap = buildEmailNameMap();
+    const emailMap = await buildEmailNameMap();
     const csv = H20.historyToCsv(rows, { nameLookup: (em) => nameForEmail(em, emailMap) });
     // Prepend BOM so Excel opens UTF-8 correctly
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
@@ -681,10 +680,10 @@ H20 Esports Campus`;
     H20.toast({ type: 'success', message: `${rows.length} sessies geëxporteerd.` });
   });
 
-  document.getElementById('historyClear').addEventListener('click', () => {
+  document.getElementById('historyClear').addEventListener('click', async () => {
     if (!confirm('Alle geschiedenis wissen? Dit kan niet ongedaan worden gemaakt.')) return;
-    H20.clearHistory();
-    renderHistory();
+    await H20.clearHistory();
+    await renderHistory();
     H20.toast({ type: 'info', message: 'Historie gewist.' });
   });
 
@@ -709,7 +708,7 @@ H20 Esports Campus`;
   renderResets();
   renderInvites();
   renderHistory();
-})();
+})().catch((e) => console.error('admin init failed', e));
 </script>
 </body>
 </html>
