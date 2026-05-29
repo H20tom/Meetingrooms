@@ -1,0 +1,1051 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Meetingrooms H20 — Tablet</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<main class="tablet" id="tablet" data-status="available">
+  <header class="tablet__header">
+    <img class="tablet__logo" src="Logo H20 2026.png" alt="H20" />
+    <div>
+      <div class="tablet__clock" id="clock">--:--</div>
+      <span class="tablet__date" id="date">—</span>
+    </div>
+  </header>
+
+  <section class="tablet__main">
+    <div class="tablet__room-name" id="roomName">Ruimte</div>
+    <h1 class="tablet__status-text" id="statusText">Beschikbaar</h1>
+    <div class="tablet__busy-title" id="busyTitle" style="display:none;"></div>
+    <p class="tablet__sub" id="statusSub">Direct te reserveren</p>
+    <div id="bookedBy" class="tablet__booked-by" style="display:none;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      <span id="bookedByText">—</span>
+    </div>
+
+    <div class="tablet__actions" id="availableActions">
+      <button class="btn-action" data-min="30">30 min<span class="btn-action__sub">tot <span data-end-of="30">--:--</span></span></button>
+      <button class="btn-action" data-min="60">60 min<span class="btn-action__sub">tot <span data-end-of="60">--:--</span></span></button>
+      <button class="btn-action" data-min="90">90 min<span class="btn-action__sub">tot <span data-end-of="90">--:--</span></span></button>
+      <button class="btn-action" id="customBtn">Anders<span class="btn-action__sub">eigen tijd</span></button>
+    </div>
+
+    <button class="btn-plan" id="planBtn" style="display:none;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="M12 14v4M10 16h4"/></svg>
+      Vergadering inplannen
+    </button>
+
+    <div class="tablet__actions" id="busyActions" style="display:none; grid-template-columns: repeat(4, 1fr); max-width: 960px;">
+      <button class="btn-action" data-extend="15">+15 min</button>
+      <button class="btn-action" data-extend="30">+30 min</button>
+      <button class="btn-action" data-extend="60">+60 min</button>
+      <button class="btn-action" id="extendCustomBtn">Anders<span class="btn-action__sub">eigen eindtijd</span></button>
+    </div>
+
+    <button class="btn-end" id="endBtn" style="display:none;">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+      Vergadering beëindigen
+    </button>
+  </section>
+
+  <footer class="tablet__footer">
+    <span id="roomLabel">H20 · Meetingroom</span>
+    <span id="nextScheduledLabel"></span>
+  </footer>
+</main>
+
+<!-- Quick reserve modal (30/60/90) — vraagt om email -->
+<div class="modal-backdrop" id="reserveModal" style="display:none;">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="reserveTitle">
+    <h2 id="reserveTitle">Vergadering starten</h2>
+    <p id="reserveSub">—</p>
+    <div class="email-block">
+      <div class="field">
+        <label for="reserveTitleInput">Titel (optioneel)</label>
+        <input type="text" id="reserveTitleInput" maxlength="60" placeholder="Bijv. Klantgesprek, Sprint review" />
+        <label class="checkbox-row" style="margin-top:8px;">
+          <input type="checkbox" id="reserveShowTitle" />
+          Toon titel groot op het scherm
+        </label>
+      </div>
+      <div class="field">
+        <label for="reserveEmail">Jouw e-mail</label>
+        <input type="email" id="reserveEmail" placeholder="naam@h20.gg" autocomplete="email" inputmode="email" />
+        <div class="email-pills" data-email-pills-for="reserveEmail"></div>
+        <div class="email-hint">Geen wachtwoord nodig — we leggen alleen vast wie de ruimte heeft geboekt.</div>
+      </div>
+    </div>
+    <div class="user-tiles-block" id="reserveTilesBlock" style="display:none;">
+      <div class="user-tiles-label">Of kies wie je bent</div>
+      <div class="user-tiles-grid" id="reserveTilesGrid"></div>
+    </div>
+    <div class="modal__actions">
+      <button class="btn btn-ghost" id="reserveCancel">Annuleren</button>
+      <button class="btn btn-primary" id="reserveConfirm">Start vergadering</button>
+    </div>
+  </div>
+</div>
+
+<!-- Custom time modal -->
+<div class="modal-backdrop" id="customModal" style="display:none;">
+  <div class="modal modal--wide" role="dialog" aria-modal="true" aria-labelledby="customTitle">
+    <h2 id="customTitle">Eigen tijd</h2>
+    <p>Kies een eindtijd (24-uurs). De meeting loopt tot dat moment.</p>
+    <div class="time-grid time-grid--compact" id="customTimes"></div>
+    <p class="time-preview" id="customPreview">Selecteer een eindtijd…</p>
+    <label class="extend-sub">…of voer zelf het aantal minuten in</label>
+    <div class="modal__quick">
+      <button data-min="15">15 min</button>
+      <button data-min="45">45 min</button>
+      <button data-min="120">120 min</button>
+      <button data-min="180">180 min</button>
+      <button data-min="240">240 min</button>
+      <button data-min="360">360 min</button>
+    </div>
+    <div class="modal__input">
+      <input type="number" id="customMin" min="5" step="5" placeholder="Aantal minuten" />
+      <span>minuten</span>
+    </div>
+    <div class="email-block">
+      <div class="field">
+        <label for="customTitleInput">Titel (optioneel)</label>
+        <input type="text" id="customTitleInput" maxlength="60" placeholder="Bijv. Klantgesprek, Sprint review" />
+        <label class="checkbox-row" style="margin-top:8px;">
+          <input type="checkbox" id="customShowTitle" />
+          Toon titel groot op het scherm
+        </label>
+      </div>
+      <div class="field">
+        <label for="customEmail">Jouw e-mail</label>
+        <input type="email" id="customEmail" placeholder="naam@h20.gg" autocomplete="email" inputmode="email" />
+        <div class="email-pills" data-email-pills-for="customEmail"></div>
+      </div>
+    </div>
+    <div class="user-tiles-block" id="customTilesBlock" style="display:none;">
+      <div class="user-tiles-label">Of kies wie je bent</div>
+      <div class="user-tiles-grid" id="customTilesGrid"></div>
+    </div>
+    <div class="modal__actions">
+      <button class="btn btn-ghost" id="customCancel">Annuleren</button>
+      <button class="btn btn-primary" id="customStart">Start meeting</button>
+    </div>
+  </div>
+</div>
+
+<!-- Plan meeting modal -->
+<div class="modal-backdrop" id="planModal" style="display:none;">
+  <div class="modal modal--wide" role="dialog" aria-modal="true" aria-labelledby="planTitle">
+    <h2 id="planTitle">Vergadering inplannen</h2>
+    <p>Plan een vergadering vooraf in. Op de starttijd springt de ruimte automatisch op rood.</p>
+    <div class="form-grid">
+      <div class="field">
+        <label for="planDate">Datum</label>
+        <input type="date" id="planDate" />
+      </div>
+      <div class="field">
+        <label for="planStart">Starttijd (24u)</label>
+        <select id="planStart"></select>
+      </div>
+      <div class="field">
+        <label for="planEnd">Eindtijd (24u)</label>
+        <select id="planEnd"></select>
+      </div>
+      <div class="field full">
+        <p class="time-preview" id="planPreview" style="margin:0;">Selecteer start- en eindtijd…</p>
+      </div>
+      <div class="field full">
+        <label for="planTitleInput">Titel (optioneel)</label>
+        <input type="text" id="planTitleInput" maxlength="60" placeholder="Bijv. Klantgesprek, Sprint review" />
+        <label class="checkbox-row" style="margin-top:8px;">
+          <input type="checkbox" id="planShowTitle" />
+          Toon titel groot op het scherm
+        </label>
+      </div>
+      <div class="field full">
+        <label for="planEmail">Jouw e-mail</label>
+        <input type="email" id="planEmail" placeholder="naam@h20.gg" autocomplete="email" inputmode="email" />
+        <div class="email-pills" data-email-pills-for="planEmail"></div>
+      </div>
+    </div>
+    <div class="user-tiles-block" id="planTilesBlock" style="display:none;">
+      <div class="user-tiles-label">Of kies wie je bent</div>
+      <div class="user-tiles-grid" id="planTilesGrid"></div>
+    </div>
+    <div class="modal__actions">
+      <button class="btn btn-ghost" id="planCancel">Annuleren</button>
+      <button class="btn btn-primary" id="planConfirm">Inplannen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Custom extend modal (verlengen of eindtijd kiezen) -->
+<div class="modal-backdrop" id="extendModal" style="display:none;">
+  <div class="modal modal--wide" role="dialog" aria-modal="true" aria-labelledby="extendTitle">
+    <h2 id="extendTitle">Eindtijd aanpassen</h2>
+    <p id="extendCurrentLabel" class="extend-current">Huidige eindtijd: <strong>—</strong></p>
+
+    <label class="extend-sub">Snel verlengen met</label>
+    <div class="modal__quick extend-quick">
+      <button data-extmin="15">+15 min</button>
+      <button data-extmin="30">+30 min</button>
+      <button data-extmin="45">+45 min</button>
+      <button data-extmin="60">+60 min</button>
+      <button data-extmin="90">+90 min</button>
+      <button data-extmin="120">+120 min</button>
+    </div>
+
+    <label class="extend-sub">…of kies een eindtijd (24-uurs)</label>
+    <div class="time-grid" id="extendTimes"></div>
+    <p class="time-preview" id="extendPreview">Selecteer een eindtijd…</p>
+
+    <div class="modal__actions">
+      <button class="btn btn-ghost" id="extendCancel">Annuleren</button>
+      <button class="btn btn-primary" id="extendConfirm" disabled>Bevestigen</button>
+    </div>
+  </div>
+</div>
+
+<!-- End meeting confirmation modal -->
+<div class="modal-backdrop" id="endModal" style="display:none;">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="endTitle">
+    <h2 id="endTitle">Vergadering beëindigen?</h2>
+    <p>De ruimte komt direct weer beschikbaar voor anderen.</p>
+    <div class="modal__actions">
+      <button class="btn btn-ghost" id="endCancel">Annuleren</button>
+      <button class="btn btn-danger" id="endConfirm">Ja, beëindig</button>
+    </div>
+  </div>
+</div>
+
+<!-- PIN modal -->
+<div class="modal-backdrop" id="pinModal" style="display:none;">
+  <div class="modal modal--pin" role="dialog" aria-modal="true" aria-labelledby="pinModalTitle">
+    <h2 id="pinModalTitle">Pincode invoeren</h2>
+    <p id="pinModalSub">Voer je pincode in om verder te gaan.</p>
+    <div class="pin-input-wrap">
+      <input type="password" id="pinInput" inputmode="numeric" pattern="[0-9]*" maxlength="6" placeholder="••••" autocomplete="off" />
+    </div>
+    <p class="pin-error" id="pinError"></p>
+    <div class="modal__actions">
+      <button class="btn btn-ghost" id="pinCancel">Annuleren</button>
+      <button class="btn btn-primary" id="pinConfirm">Bevestigen</button>
+    </div>
+  </div>
+</div>
+
+<div class="offline-banner" id="offlineBanner" style="display:none;">
+  Offline — wijzigingen worden lokaal bewaard tot de verbinding terugkeert.
+</div>
+
+<script src="app.js"></script>
+<script src="auth.js"></script>
+<script src="kiosk.js"></script>
+<script>
+// Service worker (offline cache). Best-effort; faalt stil in file:// of niet-https.
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+// Offline indicator
+const offlineBanner = document.getElementById('offlineBanner');
+function syncOnlineFlag() { offlineBanner.style.display = navigator.onLine ? 'none' : 'block'; }
+window.addEventListener('online', syncOnlineFlag);
+window.addEventListener('offline', syncOnlineFlag);
+syncOnlineFlag();
+</script>
+<script>
+(function () {
+  const params = new URLSearchParams(location.search);
+  const roomId = (params.get('room') || 'raboroom').toLowerCase();
+  const room = H20.ROOMS[roomId] || H20.ROOMS.raboroom;
+
+  // Zorg dat de demo-gebruikers + pincodes bestaan, ook als de tablet
+  // de eerste pagina is die geopend wordt (login/dashboard/admin doen dit ook).
+  if (typeof Auth !== 'undefined' && Auth.ensureSeed) { Auth.ensureSeed(); }
+
+  document.title = `H20 · ${room.name}`;
+  document.getElementById('roomName').textContent = room.name;
+  document.getElementById('roomLabel').textContent = `H20 · ${room.name}`;
+
+  const tabletEl = document.getElementById('tablet');
+  const statusText = document.getElementById('statusText');
+  const statusSub = document.getElementById('statusSub');
+  const availActions = document.getElementById('availableActions');
+  const busyActions = document.getElementById('busyActions');
+  const endBtn = document.getElementById('endBtn');
+  const planBtn = document.getElementById('planBtn');
+  const nextLabel = document.getElementById('nextScheduledLabel');
+  const bookedBy = document.getElementById('bookedBy');
+  const bookedByText = document.getElementById('bookedByText');
+
+  H20.startClock(document.getElementById('clock'), document.getElementById('date'));
+
+  // Kiosk init: long-press on logo triggers exit-PIN
+  Kiosk.initKiosk({ exitTrigger: document.querySelector('.tablet__logo') });
+
+  // ---------- Email pill wiring ----------
+  function wireEmailPills(container, inputEl) {
+    container.innerHTML = H20.EMAIL_DOMAINS
+      .map(d => `<button type="button" class="email-pill" data-domain="${d}">${d}</button>`).join('');
+    const update = () => {
+      const v = inputEl.value.trim();
+      const localOnly = v.length > 0 && !v.includes('@');
+      const localPart = v.includes('@') ? v.split('@')[0] : v;
+      container.querySelectorAll('.email-pill').forEach((b) => {
+        b.disabled = localPart.length === 0;
+        b.dataset.replaces = v.includes('@') ? '1' : '0';
+      });
+    };
+    inputEl.addEventListener('input', update);
+    container.addEventListener('click', (e) => {
+      const b = e.target.closest('.email-pill');
+      if (!b || b.disabled) return;
+      const v = inputEl.value.trim();
+      const localPart = v.includes('@') ? v.split('@')[0] : v;
+      inputEl.value = localPart + b.dataset.domain;
+      update();
+      inputEl.focus();
+    });
+    update();
+  }
+
+  // wire all containers on load
+  document.querySelectorAll('[data-email-pills-for]').forEach((c) => {
+    const inputEl = document.getElementById(c.dataset.emailPillsFor);
+    if (inputEl) wireEmailPills(c, inputEl);
+  });
+
+  function prefillEmail(inputEl) {
+    // Bewust geen prefill meer — elke nieuwe meeting begint met een leeg veld
+    // zodat de vorige gebruiker niet per ongeluk wordt overgenomen.
+    inputEl.value = '';
+  }
+
+  // ---------- UI render ----------
+  function updateEndPreviews() {
+    const now = new Date();
+    [30, 60, 90].forEach((m) => {
+      const end = new Date(now.getTime() + m * 60000);
+      document.querySelectorAll(`[data-end-of="${m}"]`).forEach((el) => {
+        el.textContent = H20.fmtTime(end);
+      });
+    });
+  }
+
+  function updateAvailableConflictHints() {
+    [30, 60, 90].forEach((m) => {
+      const btn = availActions.querySelector(`button[data-min="${m}"]`);
+      if (!btn) return;
+      const check = H20.canStart(roomId, m);
+      btn.classList.toggle('is-blocked', !check.ok);
+      let hint = btn.querySelector('.btn-action__hint');
+      if (!check.ok && check.maxMinutes !== null) {
+        if (!hint) {
+          hint = document.createElement('span');
+          hint.className = 'btn-action__hint';
+          btn.appendChild(hint);
+        }
+        hint.textContent = `Max ${check.maxMinutes} min`;
+      } else if (hint) {
+        hint.remove();
+      }
+    });
+  }
+
+  function updateExtendConflictHints() {
+    [15, 30, 60].forEach((m) => {
+      const btn = busyActions.querySelector(`button[data-extend="${m}"]`);
+      if (!btn) return;
+      const check = H20.canExtend(roomId, m);
+      btn.classList.toggle('is-blocked', !check.ok);
+      let hint = btn.querySelector('.btn-action__hint');
+      if (!check.ok && check.maxMinutes !== null) {
+        if (!hint) {
+          hint = document.createElement('span');
+          hint.className = 'btn-action__hint';
+          btn.appendChild(hint);
+        }
+        hint.textContent = `Max +${check.maxMinutes} min`;
+      } else if (hint) {
+        hint.remove();
+      }
+    });
+  }
+
+  function updateNextScheduledLabel() {
+    const next = H20.nextScheduledAfter(roomId, new Date());
+    if (!next) { nextLabel.textContent = ''; return; }
+    const start = new Date(next.startAt);
+    const today = new Date(); today.setHours(0,0,0,0);
+    const startDay = new Date(start); startDay.setHours(0,0,0,0);
+    const dayPrefix = startDay.getTime() === today.getTime() ? 'Vandaag' :
+                      startDay.getTime() === today.getTime() + 86400000 ? 'Morgen' :
+                      H20.fmtDateShort(start);
+    const titlePart = next.title ? ` · ${next.title}` : '';
+    nextLabel.textContent = `Volgende: ${dayPrefix} ${H20.fmtTime(start)}${titlePart}`;
+  }
+
+  function render() {
+    const s = H20.getRoomStatus(roomId);
+    if (s.status === 'available') {
+      tabletEl.dataset.status = 'available';
+      statusText.textContent = 'Beschikbaar';
+      statusSub.textContent = 'Direct te reserveren';
+      bookedBy.style.display = 'none';
+      availActions.style.display = '';
+      planBtn.style.display = 'inline-flex';
+      busyActions.style.display = 'none';
+      endBtn.style.display = 'none';
+      updateEndPreviews();
+      updateAvailableConflictHints();
+    } else {
+      tabletEl.dataset.status = 'busy';
+      const cur = H20.loadState()[roomId]?.current || null;
+      const showBigTitle = !!(cur?.showTitleOnScreen && cur?.title);
+      const busyTitleEl = document.getElementById('busyTitle');
+      if (showBigTitle) {
+        busyTitleEl.textContent = cur.title;
+        busyTitleEl.style.display = '';
+      } else {
+        busyTitleEl.textContent = '';
+        busyTitleEl.style.display = 'none';
+      }
+      const titleSuffix = (!showBigTitle && s.title) ? ` · ${s.title}` : '';
+      statusText.textContent = `Bezet tot ${H20.fmtTime(s.busyUntil)}`;
+      const mins = s.minutesLeft;
+      const human = mins >= 60
+        ? `${Math.floor(mins/60)} uur ${mins%60 ? `${mins%60} min` : ''}`.trim()
+        : `${mins} ${mins === 1 ? 'minuut' : 'minuten'}`;
+      statusSub.innerHTML = `Nog <strong>${human}</strong>${titleSuffix}`;
+      const bookedName = cur?.name || null;
+      const bookedEmail = cur?.email || null;
+      const bookedLabel = bookedName || bookedEmail;
+      if (bookedLabel) {
+        bookedByText.textContent = `Geboekt door ${bookedLabel}`;
+        bookedBy.style.display = 'inline-flex';
+      } else {
+        bookedBy.style.display = 'none';
+      }
+      availActions.style.display = 'none';
+      planBtn.style.display = 'none';
+      busyActions.style.display = 'grid';
+      endBtn.style.display = 'inline-flex';
+      updateExtendConflictHints();
+    }
+    updateNextScheduledLabel();
+  }
+
+  // ---------- Reserve modal (30/60/90) ----------
+  const reserveModal = document.getElementById('reserveModal');
+  const reserveEmail = document.getElementById('reserveEmail');
+  const reserveSub = document.getElementById('reserveSub');
+  let reservePendingMin = 0;
+
+  function openReserveModal(min) {
+    reservePendingMin = min;
+    const end = new Date(Date.now() + min * 60000);
+    reserveSub.textContent = `${min} minuten — tot ${H20.fmtTime(end)}.`;
+    document.getElementById('reserveTitleInput').value = '';
+    document.getElementById('reserveShowTitle').checked = false;
+    prefillEmail(reserveEmail);
+    populateUserTiles(document.getElementById('reserveTilesGrid'), 'reserve');
+    reserveModal.style.display = 'flex';
+    setTimeout(() => reserveEmail.focus(), 60);
+  }
+  reserveModal.addEventListener('click', (e) => { if (e.target === reserveModal) reserveModal.style.display = 'none'; });
+  document.getElementById('reserveCancel').addEventListener('click', () => { reserveModal.style.display = 'none'; });
+  document.getElementById('reserveConfirm').addEventListener('click', () => {
+    const email = reserveEmail.value.trim();
+    if (!H20.isValidEmail(email)) {
+      H20.toast({ type: 'warn', message: 'Vul een geldig e-mailadres in.' });
+      reserveEmail.focus();
+      return;
+    }
+    if (pinRequiredForEmail(email, 'reserve')) return;
+    const title = document.getElementById('reserveTitleInput').value.trim() || null;
+    const showTitleOnScreen = document.getElementById('reserveShowTitle').checked;
+    const result = H20.startMeeting(roomId, reservePendingMin, { email, title, showTitleOnScreen });
+    if (!result.ok && result.conflictWith) {
+      const next = result.conflictWith;
+      const max = result.maxMinutes;
+      H20.toast({
+        type: 'error',
+        title: 'Niet mogelijk om te starten',
+        message: `Hey, dit is niet mogelijk omdat om <strong>${H20.fmtTime(new Date(next.startAt))}</strong> een geplande meeting${next.title ? ` (${next.title})` : ''} begint. Maximaal <strong>${max} ${max === 1 ? 'minuut' : 'minuten'}</strong> beschikbaar tot dan.`,
+        action: max >= 5 ? {
+          label: `Wel ${max} min starten`,
+          onClick: () => {
+            const r2 = H20.startMeeting(roomId, max, { email, title, showTitleOnScreen });
+            if (r2.ok) { reserveModal.style.display = 'none'; render(); }
+          }
+        } : null,
+      });
+      return;
+    }
+    if (result.ok) {
+      reserveModal.style.display = 'none';
+      H20.toast({ type: 'success', message: `Vergadering gestart, geboekt door ${email}.` });
+      render();
+    }
+  });
+
+  // ---------- Quick start buttons ----------
+  availActions.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-min]');
+    if (!btn || btn === document.getElementById('customBtn')) return;
+    const m = parseInt(btn.dataset.min, 10);
+    // Pre-check conflict before showing email modal
+    const check = H20.canStart(roomId, m);
+    if (!check.ok) {
+      const next = check.conflictWith;
+      H20.toast({
+        type: 'error',
+        title: 'Niet mogelijk om te starten',
+        message: `Hey, dit is niet mogelijk omdat om <strong>${H20.fmtTime(new Date(next.startAt))}</strong> een geplande meeting${next.title ? ` (${next.title})` : ''} begint. Maximaal <strong>${check.maxMinutes} min</strong> beschikbaar.`,
+        action: check.maxMinutes >= 5 ? {
+          label: `Wel ${check.maxMinutes} min starten`,
+          onClick: () => openReserveModal(check.maxMinutes),
+        } : null,
+      });
+      return;
+    }
+    openReserveModal(m);
+  });
+
+  // ---------- Extend ----------
+  busyActions.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-extend]');
+    if (!btn) return;
+    const add = parseInt(btn.dataset.extend, 10);
+    const result = H20.extendMeeting(roomId, add);
+    if (!result.ok && result.conflictWith) {
+      const next = result.conflictWith;
+      const max = result.maxMinutes;
+      H20.toast({
+        type: 'error',
+        title: 'Niet mogelijk om te verlengen',
+        message: `Hey, dit is niet mogelijk omdat om <strong>${H20.fmtTime(new Date(next.startAt))}</strong> een geplande meeting${next.title ? ` (${next.title})` : ''} begint. Je kunt maximaal <strong>+${max} ${max === 1 ? 'minuut' : 'minuten'}</strong> verlengen.`,
+        action: max >= 5 ? {
+          label: `Wel +${max} min verlengen`,
+          onClick: () => {
+            const r2 = H20.extendMeeting(roomId, max);
+            if (r2.ok) {
+              H20.toast({ type: 'success', message: `Vergadering verlengd tot ${H20.fmtTime(r2.newEnd)}.` });
+              render();
+            }
+          }
+        } : null,
+      });
+      return;
+    }
+    if (result.ok) {
+      H20.toast({ type: 'success', message: `Vergadering verlengd met ${add} min.` });
+      render();
+    }
+  });
+
+  // ---------- Tijdgrid helper (gedeeld tussen extend + custom modals) ----------
+  // Tijdvenster: 06:00 t/m 02:00 (volgende dag), in stappen van 30 minuten.
+  function buildSlotList() {
+    const order = [6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,0,1,2];
+    const slots = [];
+    for (const h of order) {
+      slots.push({ h, m: 0 });
+      if (h !== 2) slots.push({ h, m: 30 }); // 02:30 valt buiten venster
+    }
+    return slots;
+  }
+  const SLOTS = buildSlotList();
+
+  function pad2(n) { return String(n).padStart(2, '0'); }
+
+  // Bouw doel-Date op basis van anchor + gekozen H:M; rol naar volgende dag indien tijd al voorbij is
+  function buildTargetDate(anchor, h, m) {
+    const d = new Date(anchor);
+    d.setHours(h, m, 0, 0);
+    if (d <= anchor) d.setDate(d.getDate() + 1);
+    return d;
+  }
+
+  // Populeert een tegel-grid: tegels na anchor en vóór capDate zijn klikbaar.
+  // Retourneert een object met state-helpers.
+  function populateTimeGrid(gridEl, anchor, capDate) {
+    gridEl.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    for (const slot of SLOTS) {
+      const target = buildTargetDate(anchor, slot.h, slot.m);
+      const diffMin = Math.round((target - anchor) / 60000);
+      const tile = document.createElement('button');
+      tile.type = 'button';
+      tile.className = 'time-tile';
+      tile.textContent = `${pad2(slot.h)}:${pad2(slot.m)}`;
+      if (diffMin <= 0 || (capDate && target > capDate)) {
+        tile.classList.add('is-disabled');
+        tile.disabled = true;
+      } else {
+        tile.dataset.addmin = String(diffMin);
+        tile.dataset.target = target.toISOString();
+      }
+      frag.appendChild(tile);
+    }
+    gridEl.appendChild(frag);
+  }
+
+  // ---------- Custom extend modal ----------
+  const extendModal = document.getElementById('extendModal');
+  const extendTimesEl = document.getElementById('extendTimes');
+  const extendPreview = document.getElementById('extendPreview');
+  const extendCurrentLabel = document.getElementById('extendCurrentLabel');
+  const extendConfirmBtn = document.getElementById('extendConfirm');
+
+  let pendingAddMin = 0;
+  let pendingEndDate = null;
+
+  function buildExtendTiles() {
+    const status = H20.getRoomStatus(roomId);
+    const current = status.current;
+    pendingAddMin = 0;
+    pendingEndDate = null;
+    extendConfirmBtn.disabled = true;
+    extendPreview.textContent = 'Selecteer een eindtijd…';
+    extendPreview.classList.remove('is-error', 'is-ok');
+
+    const anchor = current ? new Date(current.busyUntil) : new Date();
+    extendCurrentLabel.innerHTML = current
+      ? `Huidige eindtijd: <strong>${H20.fmtTime(anchor)}</strong>`
+      : `Geen actieve meeting — kies een nieuwe eindtijd.`;
+
+    const next = H20.nextScheduledAfter(roomId, anchor);
+    const capDate = next ? new Date(next.startAt) : null;
+
+    populateTimeGrid(extendTimesEl, anchor, capDate);
+    extendModal._currentEnd = anchor;
+    extendModal._capDate = capDate;
+  }
+
+  document.getElementById('extendCustomBtn').addEventListener('click', () => {
+    buildExtendTiles();
+    extendModal.style.display = 'flex';
+  });
+  document.getElementById('extendCancel').addEventListener('click', () => extendModal.style.display = 'none');
+  extendModal.addEventListener('click', (e) => { if (e.target === extendModal) extendModal.style.display = 'none'; });
+
+  // Snelle +X knoppen → meteen verlengen
+  extendModal.querySelectorAll('.extend-quick button').forEach((b) => {
+    b.addEventListener('click', () => {
+      const add = parseInt(b.dataset.extmin, 10);
+      doExtend(add);
+    });
+  });
+
+  // Eindtijd-tegel selecteren
+  extendTimesEl.addEventListener('click', (e) => {
+    const tile = e.target.closest('.time-tile');
+    if (!tile || tile.disabled) return;
+    extendTimesEl.querySelectorAll('.time-tile.is-selected').forEach((t) => t.classList.remove('is-selected'));
+    tile.classList.add('is-selected');
+    pendingAddMin = parseInt(tile.dataset.addmin, 10) || 0;
+    pendingEndDate = tile.dataset.target ? new Date(tile.dataset.target) : null;
+    if (pendingAddMin > 0 && pendingEndDate) {
+      extendPreview.innerHTML =
+        `Nieuwe eindtijd: <strong>${H20.fmtTime(pendingEndDate)}</strong> · +${pendingAddMin} min`;
+      extendPreview.classList.add('is-ok'); extendPreview.classList.remove('is-error');
+      extendConfirmBtn.disabled = false;
+    } else {
+      extendConfirmBtn.disabled = true;
+    }
+  });
+
+  extendConfirmBtn.addEventListener('click', () => {
+    if (pendingAddMin > 0) doExtend(pendingAddMin);
+  });
+
+  function doExtend(addMin) {
+    const result = H20.extendMeeting(roomId, addMin);
+    if (!result.ok && result.conflictWith) {
+      const nextM = result.conflictWith;
+      const max = result.maxMinutes;
+      H20.toast({
+        type: 'error',
+        title: 'Niet mogelijk om te verlengen',
+        message: `Om <strong>${H20.fmtTime(new Date(nextM.startAt))}</strong> begint een geplande meeting. Max +${max} min.`,
+      });
+      return;
+    }
+    if (result.ok) {
+      extendModal.style.display = 'none';
+      H20.toast({ type: 'success', message: `Verlengd tot ${H20.fmtTime(result.newEnd)}.` });
+      render();
+    }
+  }
+
+  // ---------- Custom modal (nieuwe meeting) ----------
+  const customModal = document.getElementById('customModal');
+  const customMin = document.getElementById('customMin');
+  const customEmail = document.getElementById('customEmail');
+  const customTimesEl = document.getElementById('customTimes');
+  const customPreview = document.getElementById('customPreview');
+
+  function refreshCustomTiles() {
+    const anchor = new Date();
+    const next = H20.nextScheduledAfter(roomId, anchor);
+    const capDate = next ? new Date(next.startAt) : null;
+    populateTimeGrid(customTimesEl, anchor, capDate);
+    customPreview.textContent = 'Selecteer een eindtijd…';
+    customPreview.classList.remove('is-error', 'is-ok');
+  }
+
+  document.getElementById('customBtn').addEventListener('click', () => {
+    prefillEmail(customEmail);
+    customMin.value = '';
+    document.getElementById('customTitleInput').value = '';
+    document.getElementById('customShowTitle').checked = false;
+    refreshCustomTiles();
+    populateUserTiles(document.getElementById('customTilesGrid'), 'custom');
+    customModal.style.display = 'flex';
+    setTimeout(() => customMin.focus(), 50);
+  });
+  document.getElementById('customCancel').addEventListener('click', () => { customModal.style.display = 'none'; customMin.value = ''; });
+  customModal.addEventListener('click', (e) => { if (e.target === customModal) customModal.style.display = 'none'; });
+  customModal.querySelectorAll('.modal__quick button').forEach((b) => {
+    b.addEventListener('click', () => {
+      customMin.value = b.dataset.min;
+      // Bij minuten-keuze: tegel-selectie en preview opschonen
+      customTimesEl.querySelectorAll('.time-tile.is-selected').forEach((t) => t.classList.remove('is-selected'));
+      const anchor = new Date();
+      const target = new Date(anchor.getTime() + parseInt(b.dataset.min, 10) * 60000);
+      customPreview.innerHTML = `Eindtijd: <strong>${H20.fmtTime(target)}</strong> · ${b.dataset.min} min`;
+      customPreview.classList.add('is-ok'); customPreview.classList.remove('is-error');
+    });
+  });
+  // Eindtijd-tegel klikken → vult customMin en toont preview
+  customTimesEl.addEventListener('click', (e) => {
+    const tile = e.target.closest('.time-tile');
+    if (!tile || tile.disabled) return;
+    customTimesEl.querySelectorAll('.time-tile.is-selected').forEach((t) => t.classList.remove('is-selected'));
+    tile.classList.add('is-selected');
+    const min = parseInt(tile.dataset.addmin, 10) || 0;
+    const target = tile.dataset.target ? new Date(tile.dataset.target) : null;
+    if (min > 0 && target) {
+      customMin.value = String(min);
+      customPreview.innerHTML = `Eindtijd: <strong>${H20.fmtTime(target)}</strong> · ${min} min`;
+      customPreview.classList.add('is-ok'); customPreview.classList.remove('is-error');
+    }
+  });
+  // Als gebruiker zelf typt in minutenveld → tegel-selectie weg
+  customMin.addEventListener('input', () => {
+    customTimesEl.querySelectorAll('.time-tile.is-selected').forEach((t) => t.classList.remove('is-selected'));
+    const m = parseInt(customMin.value, 10);
+    if (m && m >= 5) {
+      const target = new Date(Date.now() + m * 60000);
+      customPreview.innerHTML = `Eindtijd: <strong>${H20.fmtTime(target)}</strong> · ${m} min`;
+      customPreview.classList.add('is-ok'); customPreview.classList.remove('is-error');
+    } else {
+      customPreview.textContent = 'Selecteer een eindtijd…';
+      customPreview.classList.remove('is-ok', 'is-error');
+    }
+  });
+  document.getElementById('customStart').addEventListener('click', () => {
+    const m = parseInt(customMin.value, 10);
+    if (!m || m < 5) { H20.toast({ type: 'warn', message: 'Vul een geldige duur in (minimaal 5 minuten).' }); customMin.focus(); return; }
+    const email = customEmail.value.trim();
+    if (!H20.isValidEmail(email)) { H20.toast({ type: 'warn', message: 'Vul een geldig e-mailadres in.' }); customEmail.focus(); return; }
+    if (pinRequiredForEmail(email, 'custom')) return;
+    const title = document.getElementById('customTitleInput').value.trim() || null;
+    const showTitleOnScreen = document.getElementById('customShowTitle').checked;
+    const result = H20.startMeeting(roomId, m, { email, title, showTitleOnScreen });
+    if (!result.ok && result.conflictWith) {
+      const next = result.conflictWith;
+      H20.toast({
+        type: 'error',
+        title: 'Niet mogelijk',
+        message: `Hey, dit is niet mogelijk omdat om <strong>${H20.fmtTime(new Date(next.startAt))}</strong> een geplande meeting begint. Maximaal <strong>${result.maxMinutes} min</strong> beschikbaar.`,
+      });
+      return;
+    }
+    customModal.style.display = 'none';
+    customMin.value = '';
+    H20.toast({ type: 'success', message: `Vergadering gestart, geboekt door ${email}.` });
+    render();
+  });
+
+  // ---------- End modal ----------
+  const endModal = document.getElementById('endModal');
+  endBtn.addEventListener('click', () => { endModal.style.display = 'flex'; });
+  document.getElementById('endCancel').addEventListener('click', () => { endModal.style.display = 'none'; });
+  endModal.addEventListener('click', (e) => { if (e.target === endModal) endModal.style.display = 'none'; });
+  document.getElementById('endConfirm').addEventListener('click', () => {
+    H20.endMeeting(roomId);
+    endModal.style.display = 'none';
+    H20.toast({ type: 'success', message: 'Vergadering beëindigd. Ruimte is weer beschikbaar.' });
+    render();
+  });
+
+  // ---------- Plan modal ----------
+  const planModal = document.getElementById('planModal');
+  const planDate = document.getElementById('planDate');
+  const planStart = document.getElementById('planStart');
+  const planEnd = document.getElementById('planEnd');
+  const planPreview = document.getElementById('planPreview');
+  const planTitleInput = document.getElementById('planTitleInput');
+  const planEmail = document.getElementById('planEmail');
+
+  // Build 24h time options in 15-min steps (00:00 - 23:45)
+  function buildTimeOptions(selectEl) {
+    selectEl.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    for (let h = 0; h < 24; h++) {
+      for (let m = 0; m < 60; m += 15) {
+        const v = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        frag.appendChild(opt);
+      }
+    }
+    selectEl.appendChild(frag);
+  }
+  buildTimeOptions(planStart);
+  buildTimeOptions(planEnd);
+
+  function computePlanTimes() {
+    if (!planDate.value || !planStart.value || !planEnd.value) return null;
+    const startAt = new Date(`${planDate.value}T${planStart.value}:00`);
+    let endAt = new Date(`${planDate.value}T${planEnd.value}:00`);
+    if (endAt <= startAt) endAt = new Date(endAt.getTime() + 24 * 60 * 60000); // cross midnight
+    const durMin = Math.round((endAt - startAt) / 60000);
+    return { startAt, endAt, durMin };
+  }
+
+  function updatePlanPreview() {
+    const t = computePlanTimes();
+    if (!t) { planPreview.textContent = 'Selecteer start- en eindtijd…'; planPreview.classList.remove('is-ok','is-error'); return; }
+    if (t.durMin < 5) {
+      planPreview.textContent = 'Eindtijd moet na starttijd liggen (min. 5 minuten).';
+      planPreview.classList.remove('is-ok'); planPreview.classList.add('is-error');
+      return;
+    }
+    const h = Math.floor(t.durMin / 60), m = t.durMin % 60;
+    const dur = h ? (m ? `${h}u ${m}min` : `${h}u`) : `${m}min`;
+    planPreview.textContent = `Duur: ${dur} (${planStart.value} – ${planEnd.value})`;
+    planPreview.classList.remove('is-error'); planPreview.classList.add('is-ok');
+  }
+
+  function openPlanModal() {
+    const now = new Date();
+    const next = new Date(Math.ceil(now.getTime() / (15 * 60000)) * 15 * 60000);
+    planDate.value = `${next.getFullYear()}-${String(next.getMonth()+1).padStart(2,'0')}-${String(next.getDate()).padStart(2,'0')}`;
+    planStart.value = `${String(next.getHours()).padStart(2,'0')}:${String(next.getMinutes()).padStart(2,'0')}`;
+    const endDefault = new Date(next.getTime() + 60 * 60000);
+    planEnd.value = `${String(endDefault.getHours()).padStart(2,'0')}:${String(endDefault.getMinutes()).padStart(2,'0')}`;
+    planTitleInput.value = '';
+    document.getElementById('planShowTitle').checked = false;
+    prefillEmail(planEmail);
+    populateUserTiles(document.getElementById('planTilesGrid'), 'plan');
+    updatePlanPreview();
+    planModal.style.display = 'flex';
+  }
+  planBtn.addEventListener('click', openPlanModal);
+  document.getElementById('planCancel').addEventListener('click', () => { planModal.style.display = 'none'; });
+  planModal.addEventListener('click', (e) => { if (e.target === planModal) planModal.style.display = 'none'; });
+  planStart.addEventListener('change', updatePlanPreview);
+  planEnd.addEventListener('change', updatePlanPreview);
+  planDate.addEventListener('change', updatePlanPreview);
+
+  document.getElementById('planConfirm').addEventListener('click', () => {
+    if (!planDate.value || !planStart.value || !planEnd.value) { H20.toast({ type: 'warn', message: 'Vul datum, start- en eindtijd in.' }); return; }
+    const times = computePlanTimes();
+    if (!times || times.durMin < 5) { H20.toast({ type: 'warn', message: 'Eindtijd moet minimaal 5 minuten na de starttijd liggen.' }); return; }
+    const { startAt, endAt, durMin } = times;
+    const email = planEmail.value.trim();
+    if (!H20.isValidEmail(email)) { H20.toast({ type: 'warn', message: 'Vul een geldig e-mailadres in.' }); planEmail.focus(); return; }
+    if (pinRequiredForEmail(email, 'plan')) return;
+    const title = planTitleInput.value.trim() || null;
+    const showTitleOnScreen = document.getElementById('planShowTitle').checked;
+    const result = H20.scheduleMeeting(roomId, { startAt, endAt, title, email, showTitleOnScreen });
+    if (!result.ok) {
+      let msg = 'Tijdslot bezet.';
+      if (result.reason === 'past') msg = 'Hey, dat tijdstip ligt in het verleden. Kies een toekomstig moment.';
+      else if (result.reason === 'invalid-range') msg = result.message;
+      else if (result.reason === 'overlap-current' && result.conflictWith) {
+        msg = `Hey, dit is niet mogelijk omdat er nu al een meeting loopt tot ${H20.fmtTime(new Date(result.conflictWith.endAt))}.`;
+      } else if (result.reason === 'overlap-scheduled' && result.conflictWith) {
+        const c = result.conflictWith;
+        msg = `Hey, dit overlapt met een bestaande geplande meeting${c.title ? ` (${c.title})` : ''} van ${H20.fmtTime(new Date(c.startAt))} tot ${H20.fmtTime(new Date(c.endAt))}.`;
+      }
+      H20.toast({ type: 'error', title: 'Inplannen niet mogelijk', message: msg });
+      return;
+    }
+    planModal.style.display = 'none';
+    H20.toast({ type: 'info', title: 'Ingepland', message: `${room.name} · ${planDate.value} om ${planStart.value} (${durMin} min) — ${email}.` });
+    render();
+  });
+
+  // ---------- User tiles + PIN ----------
+  function populateUserTiles(gridEl, context) {
+    const block = gridEl.closest('.user-tiles-block');
+    if (typeof Auth === 'undefined') { if (block) block.style.display = 'none'; return; }
+    const users = Auth.listUsersForQuickPick();
+    if (!users.length) { if (block) block.style.display = 'none'; return; }
+    if (block) block.style.display = '';
+    gridEl.innerHTML = users.map((u) => `
+      <button type="button" class="user-tile" data-uid="${u.id}" data-uname="${u.name.replace(/"/g, '&quot;')}" data-uemail="${u.email}" data-haspin="${u.hasPin ? '1' : '0'}">
+        <span class="user-tile__initial">${u.name.charAt(0).toUpperCase()}</span>
+        ${u.name}
+      </button>`).join('');
+    gridEl.onclick = (e) => {
+      const tile = e.target.closest('.user-tile');
+      if (!tile) return;
+      const uid = tile.dataset.uid, uname = tile.dataset.uname, uemail = tile.dataset.uemail;
+      // Users WE created with a PIN must verify it; created users without a PIN book directly.
+      if (tile.dataset.haspin === '1') {
+        openPinModal(uid, uname, uemail, context);
+      } else {
+        bookForUser(uemail, uname, context);
+      }
+    };
+  }
+
+  // If the typed e-mail belongs to a user WE created who has a PIN, force PIN entry
+  // before booking — otherwise typing the e-mail would bypass the pincode.
+  function pinRequiredForEmail(email, context) {
+    if (typeof Auth === 'undefined') return false;
+    const target = (email || '').trim().toLowerCase();
+    if (!target) return false;
+    const match = Auth.listUsersForQuickPick().find(
+      (u) => u.email && u.email.toLowerCase() === target && u.hasPin
+    );
+    if (!match) return false;
+    openPinModal(match.id, match.name, match.email, context);
+    return true;
+  }
+
+  const pinModal = document.getElementById('pinModal');
+  const pinInput = document.getElementById('pinInput');
+  const pinError = document.getElementById('pinError');
+  const pinModalTitle = document.getElementById('pinModalTitle');
+  const pinModalSub = document.getElementById('pinModalSub');
+  let pinState = { userId: null, userName: null, userEmail: null, context: null };
+
+  function openPinModal(userId, userName, userEmail, context) {
+    pinState = { userId, userName, userEmail, context };
+    pinModalTitle.textContent = `Hoi ${userName}!`;
+    pinModalSub.textContent = 'Voer je pincode in om de vergadering te starten.';
+    pinInput.value = '';
+    pinError.textContent = '';
+    pinModal.style.display = 'flex';
+    setTimeout(() => pinInput.focus(), 60);
+  }
+
+  document.getElementById('pinCancel').addEventListener('click', () => {
+    pinModal.style.display = 'none';
+    pinInput.value = '';
+    pinError.textContent = '';
+  });
+
+  pinInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') document.getElementById('pinConfirm').click();
+  });
+
+  document.getElementById('pinConfirm').addEventListener('click', async () => {
+    const pin = pinInput.value.trim();
+    if (!pin) { pinError.textContent = 'Voer een pincode in.'; return; }
+    const result = await Auth.verifyUserPin(pinState.userId, pin);
+    if (!result.ok) {
+      pinInput.value = '';
+      pinError.textContent = 'Onjuiste pincode. Probeer opnieuw.';
+      pinInput.focus();
+      return;
+    }
+    const email = result.user.email;
+    const name = result.user.name;
+    pinModal.style.display = 'none';
+    pinError.textContent = '';
+    bookForUser(email, name, pinState.context);
+  });
+
+  // Shared booking flow for a selected/verified user (PIN-verified or PIN-less created user).
+  function bookForUser(email, name, context) {
+    if (context === 'reserve') {
+      const rTitle = document.getElementById('reserveTitleInput').value.trim() || null;
+      const rShow = document.getElementById('reserveShowTitle').checked;
+      const r = H20.startMeeting(roomId, reservePendingMin, { email, name, title: rTitle, showTitleOnScreen: rShow });
+      if (!r.ok && r.conflictWith) {
+        const max = r.maxMinutes;
+        H20.toast({
+          type: 'error', title: 'Niet mogelijk om te starten',
+          message: `Om <strong>${H20.fmtTime(new Date(r.conflictWith.startAt))}</strong> begint een geplande meeting. Max <strong>${max} min</strong> beschikbaar.`,
+          action: max >= 5 ? { label: `Wel ${max} min starten`, onClick: () => { const r2 = H20.startMeeting(roomId, max, { email, name, title: rTitle, showTitleOnScreen: rShow }); if (r2.ok) { reserveModal.style.display = 'none'; render(); } } } : null,
+        });
+        return;
+      }
+      if (r.ok) {
+        reserveModal.style.display = 'none';
+        H20.toast({ type: 'success', message: `Vergadering gestart door ${name}.` });
+        render();
+      }
+
+    } else if (context === 'custom') {
+      const m = parseInt(customMin.value, 10);
+      if (!m || m < 5) { H20.toast({ type: 'warn', message: 'Selecteer eerst een duur.' }); return; }
+      const cTitle = document.getElementById('customTitleInput').value.trim() || null;
+      const cShow = document.getElementById('customShowTitle').checked;
+      const r = H20.startMeeting(roomId, m, { email, name, title: cTitle, showTitleOnScreen: cShow });
+      if (!r.ok && r.conflictWith) {
+        H20.toast({
+          type: 'error', title: 'Niet mogelijk',
+          message: `Om <strong>${H20.fmtTime(new Date(r.conflictWith.startAt))}</strong> begint een geplande meeting. Max <strong>${r.maxMinutes} min</strong> beschikbaar.`,
+        });
+        return;
+      }
+      if (r.ok) {
+        customModal.style.display = 'none';
+        customMin.value = '';
+        H20.toast({ type: 'success', message: `Vergadering gestart door ${name}.` });
+        render();
+      }
+
+    } else if (context === 'plan') {
+      if (!planDate.value || !planStart.value || !planEnd.value) {
+        H20.toast({ type: 'warn', message: 'Vul datum, start- en eindtijd in.' }); return;
+      }
+      const times = computePlanTimes();
+      if (!times || times.durMin < 5) {
+        H20.toast({ type: 'warn', message: 'Eindtijd moet minimaal 5 minuten na starttijd liggen.' }); return;
+      }
+      const { startAt, endAt, durMin } = times;
+      const pShow = document.getElementById('planShowTitle').checked;
+      const r = H20.scheduleMeeting(roomId, { startAt, endAt, title: planTitleInput.value.trim() || null, email, name, showTitleOnScreen: pShow });
+      if (!r.ok) {
+        let msg = 'Tijdslot bezet.';
+        if (r.reason === 'past') msg = 'Dat tijdstip ligt in het verleden.';
+        else if (r.reason === 'overlap-current' && r.conflictWith) msg = `Er loopt al een meeting tot ${H20.fmtTime(new Date(r.conflictWith.endAt))}.`;
+        else if (r.reason === 'overlap-scheduled' && r.conflictWith) {
+          const c = r.conflictWith;
+          msg = `Overlapt met een geplande meeting${c.title ? ` (${c.title})` : ''} van ${H20.fmtTime(new Date(c.startAt))} tot ${H20.fmtTime(new Date(c.endAt))}.`;
+        }
+        H20.toast({ type: 'error', title: 'Inplannen niet mogelijk', message: msg }); return;
+      }
+      planModal.style.display = 'none';
+      H20.toast({ type: 'info', title: 'Ingepland', message: `${room.name} · ${planDate.value} om ${planStart.value} (${durMin} min) — ${name}.` });
+      render();
+    }
+  }
+
+  // ---------- Realtime sync ----------
+  window.addEventListener('storage', (e) => {
+    if (!e.key || e.key.startsWith('h20-meetingroom-state')) render();
+  });
+  setInterval(render, 5000);
+
+  render();
+})();
+</script>
+</body>
+</html>

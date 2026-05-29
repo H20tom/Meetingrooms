@@ -1,0 +1,715 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Meetingrooms H20 — Beheer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<main class="admin">
+  <header class="admin__header">
+    <div class="admin__brand">
+      <img src="Logo H20 2026.png" alt="H20" />
+      <div>
+        <strong>Meetingrooms H20 · Beheer</strong>
+        <span>Gebruikers · Kiosk</span>
+      </div>
+    </div>
+    <div class="admin__user">
+      <span id="adminMe">—</span>
+      <a class="btn btn-ghost" href="dashboard.html">← Dashboard</a>
+      <button class="btn btn-ghost" id="logoutBtn">Uitloggen</button>
+    </div>
+  </header>
+
+  <!-- USERS -->
+  <section class="admin__panel">
+    <div class="admin__panel-head">
+      <h2>Gebruikers</h2>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-ghost" id="inviteBtn">🔗 Uitnodigingslink maken</button>
+        <button class="btn btn-primary" id="addUserBtn">+ Nieuwe gebruiker</button>
+      </div>
+    </div>
+    <div class="admin__table-wrap">
+      <table class="admin__table" id="usersTable">
+        <thead>
+          <tr><th>Naam</th><th>E-mail</th><th>Rol</th><th>Aangemaakt</th><th>Acties</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- INVITES -->
+  <section class="admin__panel">
+    <div class="admin__panel-head">
+      <h2>Openstaande uitnodigingen</h2>
+    </div>
+    <div class="admin__table-wrap">
+      <table class="admin__table" id="invitesTable">
+        <thead><tr><th>Naam</th><th>E-mail</th><th>Rol</th><th>Verloopt</th><th>Acties</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- HISTORY -->
+  <section class="admin__panel">
+    <div class="admin__panel-head">
+      <h2>Vergader-historie</h2>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="btn btn-ghost" id="historyClear">Wissen</button>
+        <button class="btn btn-primary" id="historyExport">Export CSV</button>
+      </div>
+    </div>
+    <div class="history-filters">
+      <label class="field">
+        <span>Ruimte</span>
+        <select id="histRoom"><option value="">Alle ruimtes</option></select>
+      </label>
+      <label class="field">
+        <span>Van</span>
+        <input type="date" id="histFrom" />
+      </label>
+      <label class="field">
+        <span>Tot</span>
+        <input type="date" id="histTo" />
+      </label>
+      <div class="history-stats" id="histStats">—</div>
+    </div>
+    <div class="admin__table-wrap">
+      <table class="admin__table admin__table--log" id="historyTable">
+        <thead><tr>
+          <th>Tijd</th>
+          <th>Naam</th>
+          <th>E-mail</th>
+          <th>Meeting</th>
+          <th>Locatie</th>
+          <th>Duur</th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- PENDING RESETS -->
+  <section class="admin__panel">
+    <div class="admin__panel-head">
+      <h2>Openstaande wachtwoord-resets</h2>
+    </div>
+    <div class="admin__table-wrap">
+      <table class="admin__table" id="resetsTable">
+        <thead><tr><th>E-mail</th><th>Code</th><th>Verloopt</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <p class="admin__hint">In productie worden codes per e-mail verstuurd. In de huidige demo zie je ze hier zodat je gebruikers kunt helpen.</p>
+  </section>
+
+  <!-- KIOSK -->
+  <section class="admin__panel">
+    <div class="admin__panel-head"><h2>Kiosk-bescherming (tablets)</h2></div>
+    <div class="admin__grid">
+      <label class="field">
+        <span>Kiosk-mode actief</span>
+        <input type="checkbox" id="kioskEnabled" />
+      </label>
+      <label class="field">
+        <span>Wake-lock (scherm aan)</span>
+        <input type="checkbox" id="kioskWake" />
+      </label>
+      <label class="field">
+        <span>Exit-PIN</span>
+        <input type="text" id="kioskPin" inputmode="numeric" pattern="[0-9]*" />
+      </label>
+      <label class="field">
+        <span>Long-press duur (ms)</span>
+        <input type="number" id="kioskLong" min="500" step="100" />
+      </label>
+    </div>
+    <div class="admin__actions">
+      <button class="btn btn-primary" id="kioskSave">Opslaan</button>
+    </div>
+    <p class="admin__hint">Op iedere tablet: 3 sec lang ingedrukt houden op het H20-logo opent het PIN-scherm.</p>
+  </section>
+</main>
+
+<!-- PIN LINK MODAL -->
+<div class="modal-backdrop" id="pinLinkModal" style="display:none;">
+  <div class="modal modal--wide" role="dialog" aria-modal="true">
+    <h2>Pincode-link</h2>
+    <div id="pinLinkResult" class="invite-result"></div>
+    <div class="modal__actions">
+      <button class="btn btn-primary" id="pinLinkClose">Sluiten</button>
+    </div>
+  </div>
+</div>
+
+<!-- RESET LINK MODAL -->
+<div class="modal-backdrop" id="resetLinkModal" style="display:none;">
+  <div class="modal modal--wide" role="dialog" aria-modal="true">
+    <h2>Wachtwoord reset-link</h2>
+    <div id="resetLinkResult" class="invite-result"></div>
+    <div class="modal__actions">
+      <button class="btn btn-primary" id="resetLinkClose">Sluiten</button>
+    </div>
+  </div>
+</div>
+
+<!-- INVITE MODAL -->
+<div class="modal-backdrop" id="inviteModal" style="display:none;">
+  <div class="modal modal--wide" role="dialog" aria-modal="true">
+    <h2>Uitnodigingslink maken</h2>
+    <p>Vul de gegevens in. Je krijgt een unieke link die je zelf kunt versturen (mail, WhatsApp, Slack — wat je wilt). De ontvanger kiest daarna zelf een wachtwoord.</p>
+    <div class="form-grid">
+      <div class="field full">
+        <label for="invName">Naam</label>
+        <input type="text" id="invName" />
+      </div>
+      <div class="field full">
+        <label for="invEmail">E-mail</label>
+        <input type="email" id="invEmail" />
+      </div>
+      <div class="field">
+        <label for="invRole">Rol</label>
+        <select id="invRole">
+          <option value="user">Gebruiker</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal__actions">
+      <button class="btn btn-ghost" id="inviteCancel">Annuleren</button>
+      <button class="btn btn-primary" id="inviteSend">Link aanmaken</button>
+    </div>
+    <div id="inviteResult" class="invite-result" style="display:none;"></div>
+  </div>
+</div>
+
+<!-- USER MODAL -->
+<div class="modal-backdrop" id="userModal" style="display:none;">
+  <div class="modal modal--wide" role="dialog" aria-modal="true">
+    <h2 id="userModalTitle">Nieuwe gebruiker</h2>
+    <div class="form-grid">
+      <div class="field full">
+        <label for="uName">Naam</label>
+        <input type="text" id="uName" />
+      </div>
+      <div class="field full">
+        <label for="uEmail">E-mail</label>
+        <input type="email" id="uEmail" />
+      </div>
+      <div class="field">
+        <label for="uRole">Rol</label>
+        <select id="uRole">
+          <option value="user">Gebruiker</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="uPwd">Wachtwoord <small id="uPwdHint">(laat leeg om niet te wijzigen)</small></label>
+        <input type="text" id="uPwd" autocomplete="new-password" />
+      </div>
+    </div>
+    <div class="modal__actions">
+      <button class="btn btn-ghost" id="userCancel">Annuleren</button>
+      <button class="btn btn-primary" id="userSave">Opslaan</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+<script src="auth.js"></script>
+<script src="kiosk.js"></script>
+<script>
+(async function () {
+  await Auth.ensureSeed();
+  const me = Auth.requireAdmin();
+  if (!me) return;
+  document.getElementById('adminMe').textContent = `${me.name} (${me.email})`;
+
+  document.getElementById('logoutBtn').addEventListener('click', () => {
+    Auth.logout();
+    location.replace('login.html');
+  });
+
+  // ---------- Users ----------
+  const tbody = document.querySelector('#usersTable tbody');
+  function renderUsers() {
+    const users = Auth.listUsers();
+    tbody.innerHTML = users.map((u) => `
+      <tr data-id="${u.id}">
+        <td>${u.name}</td>
+        <td>${u.email}</td>
+        <td><span class="role-pill role-${u.role}">${u.role}</span></td>
+        <td>${new Date(u.createdAt).toLocaleDateString('nl-NL')}</td>
+        <td class="row-actions">
+          <button class="btn-link" data-edit="${u.id}">Bewerken</button>
+          <button class="btn-link" data-reset="${u.id}">🔁 Wachtwoord-link</button>
+          <button class="btn-link" data-pin="${u.id}">🔑 PIN-link</button>
+          <button class="btn-link danger" data-remove="${u.id}">Verwijderen</button>
+        </td>
+      </tr>
+    `).join('');
+  }
+
+  const userModal = document.getElementById('userModal');
+  const uName = document.getElementById('uName');
+  const uEmail = document.getElementById('uEmail');
+  const uRole = document.getElementById('uRole');
+  const uPwd = document.getElementById('uPwd');
+  const uTitle = document.getElementById('userModalTitle');
+  const uPwdHint = document.getElementById('uPwdHint');
+  let editingId = null;
+
+  function openUserModal(user = null) {
+    editingId = user ? user.id : null;
+    uTitle.textContent = user ? 'Gebruiker bewerken' : 'Nieuwe gebruiker';
+    uName.value = user?.name || '';
+    uEmail.value = user?.email || '';
+    uRole.value = user?.role || 'user';
+    uPwd.value = '';
+    uPwdHint.style.display = user ? '' : 'none';
+    userModal.style.display = 'flex';
+    setTimeout(() => uName.focus(), 50);
+  }
+  document.getElementById('addUserBtn').addEventListener('click', () => openUserModal());
+  document.getElementById('userCancel').addEventListener('click', () => userModal.style.display = 'none');
+  userModal.addEventListener('click', (e) => { if (e.target === userModal) userModal.style.display = 'none'; });
+
+  document.getElementById('userSave').addEventListener('click', async () => {
+    const data = {
+      name: uName.value.trim(),
+      email: uEmail.value.trim(),
+      role: uRole.value,
+      password: uPwd.value,
+    };
+    if (!data.name || !data.email) { H20.toast({ type: 'warn', message: 'Naam en e-mail zijn verplicht.' }); return; }
+    if (!H20.isValidEmail(data.email)) { H20.toast({ type: 'warn', message: 'Ongeldig e-mailadres.' }); return; }
+
+    let res;
+    if (editingId) {
+      const patch = { name: data.name, email: data.email, role: data.role };
+      if (data.password) patch.password = data.password;
+      res = await Auth.updateUser(editingId, patch);
+    } else {
+      if (!data.password || data.password.length < 6) { H20.toast({ type: 'warn', message: 'Wachtwoord min. 6 tekens.' }); return; }
+      res = await Auth.addUser(data);
+    }
+    if (!res.ok) {
+      const map = { 'duplicate-email': 'E-mail bestaat al.', 'forbidden': 'Geen rechten.', 'missing-fields': 'Velden ontbreken.' };
+      H20.toast({ type: 'error', message: map[res.reason] || res.reason });
+      return;
+    }
+    H20.toast({ type: 'success', message: editingId ? 'Gebruiker bijgewerkt.' : 'Gebruiker toegevoegd.' });
+    userModal.style.display = 'none';
+    renderUsers();
+    renderResets();
+  });
+
+  tbody.addEventListener('click', (e) => {
+    const editId = e.target.dataset.edit;
+    const remId = e.target.dataset.remove;
+    const resetId = e.target.dataset.reset;
+    if (editId) {
+      const u = Auth.listUsers().find((x) => x.id === editId);
+      if (u) openUserModal(u);
+    } else if (remId) {
+      const u = Auth.listUsers().find((x) => x.id === remId);
+      if (!u) return;
+      if (!confirm(`Verwijder gebruiker ${u.name} (${u.email})?`)) return;
+      const res = Auth.removeUser(remId);
+      if (!res.ok) {
+        const map = {
+          'cannot-remove-self': 'Je kunt jezelf niet verwijderen.',
+          'last-admin': 'Dit is de laatste admin — kan niet verwijderd worden.',
+          'forbidden': 'Geen rechten.',
+        };
+        H20.toast({ type: 'error', message: map[res.reason] || res.reason });
+        return;
+      }
+      H20.toast({ type: 'success', message: 'Gebruiker verwijderd.' });
+      renderUsers();
+    } else if (resetId) {
+      const u = Auth.listUsers().find((x) => x.id === resetId);
+      if (!u) return;
+      const res = Auth.requestPasswordReset(u.email);
+      if (!res.ok) {
+        H20.toast({ type: 'error', message: 'Reset aanmaken mislukt.' });
+        return;
+      }
+      openResetLinkModal(u, res);
+      renderResets();
+    } else if (e.target.dataset.pin) {
+      const u = Auth.listUsers().find((x) => x.id === e.target.dataset.pin);
+      if (!u) return;
+      const res = Auth.createPinSetupLink(u.id);
+      if (!res.ok) { H20.toast({ type: 'error', message: 'PIN-link aanmaken mislukt.' }); return; }
+      openPinLinkModal(u, res);
+    }
+  });
+
+  function renderResets() {
+    const rb = document.querySelector('#resetsTable tbody');
+    const list = Auth.listPendingResets();
+    rb.innerHTML = list.length ? list.map((r) => `
+      <tr><td>${r.email}</td><td><code>${r.token}</code></td>
+      <td>${new Date(r.expiresAt).toLocaleString('nl-NL')}</td></tr>
+    `).join('') : `<tr><td colspan="3" class="empty">Geen openstaande resets.</td></tr>`;
+  }
+
+  // ---------- Invites ----------
+  const inviteModal = document.getElementById('inviteModal');
+  const invName = document.getElementById('invName');
+  const invEmail = document.getElementById('invEmail');
+  const invRole = document.getElementById('invRole');
+  const inviteResult = document.getElementById('inviteResult');
+
+  document.getElementById('inviteBtn').addEventListener('click', () => {
+    invName.value = ''; invEmail.value = ''; invRole.value = 'user';
+    inviteResult.style.display = 'none';
+    inviteResult.innerHTML = '';
+    inviteModal.style.display = 'flex';
+    setTimeout(() => invName.focus(), 50);
+  });
+  document.getElementById('inviteCancel').addEventListener('click', () => inviteModal.style.display = 'none');
+  inviteModal.addEventListener('click', (e) => { if (e.target === inviteModal) inviteModal.style.display = 'none'; });
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+    }[c]));
+  }
+
+  function copyToClipboard(text, okMsg) {
+    const done = () => H20.toast({ type: 'success', message: okMsg || 'Gekopieerd.' });
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(() => fallback());
+    } else { fallback(); }
+    function fallback() {
+      const ta = document.createElement('textarea');
+      ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch {}
+      document.body.removeChild(ta);
+    }
+  }
+
+  // ---------- Reset-link modal ----------
+  const resetLinkModal = document.getElementById('resetLinkModal');
+  const resetLinkResult = document.getElementById('resetLinkResult');
+  document.getElementById('resetLinkClose').addEventListener('click', () => resetLinkModal.style.display = 'none');
+  resetLinkModal.addEventListener('click', (e) => { if (e.target === resetLinkModal) resetLinkModal.style.display = 'none'; });
+
+  function openResetLinkModal(user, res) {
+    const validHours = Math.round((new Date(res.expiresAt) - Date.now()) / 3600000);
+    const message =
+`Hoi ${user.name},
+
+Een admin heeft een wachtwoord-reset voor je aangevraagd voor Meetingrooms H20. Klik op onderstaande link om een nieuw wachtwoord in te stellen:
+
+${res.link}
+
+De link is ${validHours} uur geldig.
+
+Groet,
+H20 Esports Campus`;
+
+    resetLinkResult.innerHTML = `
+      <p><strong>🔁 Reset-link klaar voor ${escapeHtml(user.name)}</strong> · ${validHours} uur geldig.</p>
+
+      <label class="invite-sub">Link</label>
+      <div class="invite-row">
+        <input type="text" readonly value="${escapeHtml(res.link)}" class="invite-link" id="resetLinkInput" />
+        <button class="btn btn-primary" id="resetCopyLink">📋 Kopieer link</button>
+      </div>
+
+      <label class="invite-sub">Standaard bericht (met naam ingevuld)</label>
+      <textarea readonly class="invite-message" id="resetMessageBox" rows="9">${escapeHtml(message)}</textarea>
+      <div class="invite-row">
+        <button class="btn btn-primary" id="resetCopyMessage">📋 Kopieer bericht</button>
+      </div>
+    `;
+    resetLinkModal.style.display = 'flex';
+    document.getElementById('resetCopyLink').addEventListener('click', () => {
+      document.getElementById('resetLinkInput').select();
+      copyToClipboard(res.link, 'Reset-link gekopieerd.');
+    });
+    document.getElementById('resetCopyMessage').addEventListener('click', () => {
+      document.getElementById('resetMessageBox').select();
+      copyToClipboard(message, 'Bericht gekopieerd — plak waar je wilt.');
+    });
+  }
+
+  // ---------- PIN link modal ----------
+  const pinLinkModal = document.getElementById('pinLinkModal');
+  const pinLinkResult = document.getElementById('pinLinkResult');
+  document.getElementById('pinLinkClose').addEventListener('click', () => pinLinkModal.style.display = 'none');
+  pinLinkModal.addEventListener('click', (e) => { if (e.target === pinLinkModal) pinLinkModal.style.display = 'none'; });
+
+  function openPinLinkModal(user, res) {
+    const validHours = Math.round((new Date(res.expiresAt) - Date.now()) / 3600000);
+    const message =
+`Hoi ${user.name},
+
+Gebruik onderstaande link om je pincode in te stellen voor Meetingrooms H20. Met je pincode kun je snel een vergaderruimte boeken door op je naam te klikken — zonder e-mailadres in te typen.
+
+${res.link}
+
+De link is ${validHours} uur geldig.
+
+Groet,
+H20 Esports Campus`;
+
+    pinLinkResult.innerHTML = `
+      <p><strong>🔑 PIN-link klaar voor ${escapeHtml(user.name)}</strong> · ${validHours} uur geldig.</p>
+
+      <label class="invite-sub">Link</label>
+      <div class="invite-row">
+        <input type="text" readonly value="${escapeHtml(res.link)}" class="invite-link" id="pinLinkInput" />
+        <button class="btn btn-primary" id="pinLinkCopyLink">📋 Kopieer link</button>
+      </div>
+
+      <label class="invite-sub">Standaard bericht</label>
+      <textarea readonly class="invite-message" id="pinLinkMessageBox" rows="9">${escapeHtml(message)}</textarea>
+      <div class="invite-row">
+        <button class="btn btn-primary" id="pinLinkCopyMessage">📋 Kopieer bericht</button>
+      </div>
+    `;
+    pinLinkModal.style.display = 'flex';
+    document.getElementById('pinLinkCopyLink').addEventListener('click', () => {
+      document.getElementById('pinLinkInput').select();
+      copyToClipboard(res.link, 'PIN-link gekopieerd.');
+    });
+    document.getElementById('pinLinkCopyMessage').addEventListener('click', () => {
+      document.getElementById('pinLinkMessageBox').select();
+      copyToClipboard(message, 'Bericht gekopieerd.');
+    });
+  }
+
+  document.getElementById('inviteSend').addEventListener('click', () => {
+    const name = invName.value.trim();
+    const email = invEmail.value.trim();
+    if (!name) { H20.toast({ type: 'warn', message: 'Naam is verplicht.' }); return; }
+    if (!H20.isValidEmail(email)) { H20.toast({ type: 'warn', message: 'Ongeldig e-mailadres.' }); return; }
+    const res = Auth.createInvite({ name, email, role: invRole.value });
+    if (!res.ok) {
+      const map = { 'duplicate-email': 'Er bestaat al een gebruiker met dit e-mailadres.',
+                    'forbidden': 'Geen rechten.', 'missing-fields': 'Velden ontbreken.' };
+      H20.toast({ type: 'error', message: map[res.reason] || res.reason });
+      return;
+    }
+
+    const message =
+`Hoi ${res.invite.name},
+
+Je bent uitgenodigd voor het Meetingrooms H20 reserveringssysteem. Klik op onderstaande link om je account aan te maken en kies zelf een wachtwoord:
+
+${res.link}
+
+De link is 7 dagen geldig.
+
+Groet,
+H20 Esports Campus`;
+
+    inviteResult.style.display = 'block';
+    inviteResult.innerHTML = `
+      <p><strong>✅ Uitnodiging klaar voor ${escapeHtml(res.invite.name)}</strong> · 7 dagen geldig.</p>
+
+      <label class="invite-sub">Link</label>
+      <div class="invite-row">
+        <input type="text" readonly value="${escapeHtml(res.link)}" class="invite-link" id="inviteLinkInput" />
+        <button class="btn btn-primary" id="inviteCopyLink">📋 Kopieer link</button>
+      </div>
+
+      <label class="invite-sub">Standaard bericht (met naam ingevuld)</label>
+      <textarea readonly class="invite-message" id="inviteMessage" rows="9">${escapeHtml(message)}</textarea>
+      <div class="invite-row">
+        <button class="btn btn-primary" id="inviteCopyMessage">📋 Kopieer bericht</button>
+      </div>
+    `;
+    document.getElementById('inviteCopyLink').addEventListener('click', () => {
+      document.getElementById('inviteLinkInput').select();
+      copyToClipboard(res.link, 'Link gekopieerd — plak waar je wilt.');
+    });
+    document.getElementById('inviteCopyMessage').addEventListener('click', () => {
+      document.getElementById('inviteMessage').select();
+      copyToClipboard(message, 'Bericht gekopieerd — plak in WhatsApp/mail/Slack.');
+    });
+    H20.toast({ type: 'success', message: `Uitnodigingslink klaar voor ${email}.` });
+    renderInvites();
+  });
+
+  function renderInvites() {
+    const tb = document.querySelector('#invitesTable tbody');
+    const list = Auth.listInvites();
+    if (!list.length) {
+      tb.innerHTML = `<tr><td colspan="5" class="empty">Geen openstaande uitnodigingen.</td></tr>`;
+      return;
+    }
+    tb.innerHTML = list.map((i) => {
+      const link = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}login.html?invite=${i.token}`;
+      return `
+        <tr data-token="${i.token}">
+          <td>${i.name}</td>
+          <td>${i.email}</td>
+          <td><span class="role-pill role-${i.role}">${i.role}</span></td>
+          <td>${new Date(i.expiresAt).toLocaleDateString('nl-NL')}</td>
+          <td class="row-actions">
+            <button class="btn-link" data-copy="${link}">📋 Link kopiëren</button>
+            <button class="btn-link danger" data-revoke="${i.token}">Intrekken</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+  }
+  document.querySelector('#invitesTable tbody').addEventListener('click', (e) => {
+    const copyLink = e.target.dataset.copy;
+    const revoke = e.target.dataset.revoke;
+    if (copyLink) {
+      navigator.clipboard.writeText(copyLink).then(() => H20.toast({ type: 'success', message: 'Link gekopieerd.' }));
+    } else if (revoke) {
+      if (!confirm('Uitnodiging intrekken?')) return;
+      Auth.revokeInvite(revoke);
+      renderInvites();
+      H20.toast({ type: 'info', message: 'Uitnodiging ingetrokken.' });
+    }
+  });
+
+  // ---------- History ----------
+  const histRoom = document.getElementById('histRoom');
+  const histFrom = document.getElementById('histFrom');
+  const histTo   = document.getElementById('histTo');
+  const histStats = document.getElementById('histStats');
+
+  // populate room filter
+  histRoom.innerHTML = '<option value="">Alle ruimtes</option>' +
+    Object.values(H20.ROOMS).map((r) => `<option value="${r.id}">${r.name}</option>`).join('');
+
+  // Standaard: laatste 7 dagen
+  (function setDefaultHistRange() {
+    const today = new Date();
+    const weekAgo = new Date(today.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const fmt = (d) => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    histFrom.value = fmt(weekAgo);
+    histTo.value   = fmt(today);
+  })();
+
+  function getFilteredHistory() {
+    const filter = { roomId: histRoom.value || null };
+    if (histFrom.value) filter.from = histFrom.value + 'T00:00:00';
+    if (histTo.value)   filter.to   = histTo.value   + 'T23:59:59';
+    return H20.getHistory(filter);
+  }
+
+  // Snelle naam-lookup per e-mail (case-insensitive)
+  function buildEmailNameMap() {
+    const map = new Map();
+    try {
+      Auth.listUsers().forEach((u) => {
+        if (u && u.email) map.set(u.email.toLowerCase(), u.name || '');
+      });
+    } catch {}
+    return map;
+  }
+  function nameForEmail(email, map) {
+    if (!email) return '';
+    return map.get(String(email).toLowerCase()) || '';
+  }
+  function fmtDateTime(iso) {
+    const d = new Date(iso);
+    const date = d.toLocaleDateString('nl-NL');
+    const time = d.toLocaleTimeString('nl-NL', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return `${date}, ${time}`;
+  }
+
+  function renderHistory() {
+    const rows = getFilteredHistory();
+    const tb = document.querySelector('#historyTable tbody');
+    const emailMap = buildEmailNameMap();
+    if (!rows.length) {
+      tb.innerHTML = `<tr><td colspan="6" class="empty">Geen sessies in deze periode.</td></tr>`;
+    } else {
+      tb.innerHTML = rows.map((r) => {
+        const dash = '<span class="muted">-</span>';
+        const naam = escapeHtml(r.name || nameForEmail(r.email, emailMap)) || dash;
+        const email = r.email ? escapeHtml(r.email) : dash;
+        const meeting = r.title ? escapeHtml(r.title) : dash;
+        const locatie = escapeHtml(r.roomName || '');
+        return `
+          <tr>
+            <td class="log-time">${escapeHtml(fmtDateTime(r.startedAt))}</td>
+            <td class="log-name"><strong>${naam}</strong></td>
+            <td>${email}</td>
+            <td>${meeting}</td>
+            <td>${locatie}</td>
+            <td class="log-dur">${r.durationMin} min</td>
+          </tr>
+        `;
+      }).join('');
+    }
+    const totalMin = rows.reduce((s, r) => s + (r.durationMin || 0), 0);
+    const hours = Math.floor(totalMin / 60);
+    const mins = totalMin % 60;
+    histStats.textContent = `${rows.length} sessie(s) · totaal ${hours}u ${mins}m`;
+  }
+
+  histRoom.addEventListener('change', renderHistory);
+  histFrom.addEventListener('change', renderHistory);
+  histTo.addEventListener('change', renderHistory);
+
+  document.getElementById('historyExport').addEventListener('click', () => {
+    const rows = getFilteredHistory();
+    if (!rows.length) { H20.toast({ type: 'warn', message: 'Geen rijen om te exporteren.' }); return; }
+    const emailMap = buildEmailNameMap();
+    const csv = H20.historyToCsv(rows, { nameLookup: (em) => nameForEmail(em, emailMap) });
+    // Prepend BOM so Excel opens UTF-8 correctly
+    const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const ts = new Date().toISOString().slice(0, 10);
+    a.href = url;
+    a.download = `h20-meetingrooms-historie-${ts}.csv`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    H20.toast({ type: 'success', message: `${rows.length} sessies geëxporteerd.` });
+  });
+
+  document.getElementById('historyClear').addEventListener('click', () => {
+    if (!confirm('Alle geschiedenis wissen? Dit kan niet ongedaan worden gemaakt.')) return;
+    H20.clearHistory();
+    renderHistory();
+    H20.toast({ type: 'info', message: 'Historie gewist.' });
+  });
+
+  // ---------- Kiosk ----------
+  const kCfg = Kiosk.loadKioskConfig();
+  document.getElementById('kioskEnabled').checked = !!kCfg.enabled;
+  document.getElementById('kioskWake').checked = !!kCfg.wakeLock;
+  document.getElementById('kioskPin').value = kCfg.exitPin || '';
+  document.getElementById('kioskLong').value = kCfg.longPressMs || 3000;
+  document.getElementById('kioskSave').addEventListener('click', () => {
+    Kiosk.saveKioskConfig({
+      enabled: document.getElementById('kioskEnabled').checked,
+      wakeLock: document.getElementById('kioskWake').checked,
+      exitPin: document.getElementById('kioskPin').value.trim() || '2026',
+      longPressMs: parseInt(document.getElementById('kioskLong').value, 10) || 3000,
+    });
+    H20.toast({ type: 'success', message: 'Kiosk-instellingen opgeslagen.' });
+  });
+
+  // initial render
+  renderUsers();
+  renderResets();
+  renderInvites();
+  renderHistory();
+})();
+</script>
+</body>
+</html>

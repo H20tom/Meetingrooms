@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Meetingrooms H20</title>
+<meta name="description" content="Meetingrooms H20 reserveringssysteem — tablets, dashboard en beheer." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body class="portal-page">
+
+<main class="portal">
+  <header class="portal__header">
+    <img class="portal__logo" src="Logo H20 2026.png" alt="H20" />
+    <div>
+      <h1>Meetingrooms H20</h1>
+      <p>H20 Esports Campus Amsterdam</p>
+    </div>
+  </header>
+
+  <section class="portal__grid">
+
+    <article class="portal__card portal__card--tablets">
+      <header>
+        <span class="portal__num">01</span>
+        <h2>Tablets bij de deur</h2>
+        <p>Open de juiste tablet-weergave per ruimte. Eén tablet is hardgecodeerd aan één ruimte.</p>
+      </header>
+      <div class="portal__links">
+        <a class="portal__link" href="tablet.html?room=aquarium">
+          <span class="portal__link-label">Aquarium</span>
+          <span class="portal__link-sub">1e verdieping</span>
+        </a>
+        <a class="portal__link" href="tablet.html?room=bundled">
+          <span class="portal__link-label">Bundled</span>
+          <span class="portal__link-sub">1e verdieping</span>
+        </a>
+        <a class="portal__link" href="tablet.html?room=lounge">
+          <span class="portal__link-label">Lounge Café</span>
+          <span class="portal__link-sub">1e verdieping</span>
+        </a>
+        <a class="portal__link" href="tablet.html?room=raboroom">
+          <span class="portal__link-label">Raboroom</span>
+          <span class="portal__link-sub">1e verdieping</span>
+        </a>
+      </div>
+    </article>
+
+    <article class="portal__card">
+      <header>
+        <span class="portal__num">02</span>
+        <h2>Centraal dashboard</h2>
+        <p>Live status van alle ruimtes, geplande meetings en eerstvolgende vrije slot. Inloggen vereist.</p>
+      </header>
+      <a class="btn btn-primary btn-block" href="dashboard.html">Open dashboard
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </a>
+    </article>
+
+    <article class="portal__card">
+      <header>
+        <span class="portal__num">03</span>
+        <h2>Beheer</h2>
+        <p>Gebruikers en admins toevoegen, kiosk-instellingen aanpassen. Alleen voor admins.</p>
+      </header>
+      <a class="btn btn-ghost btn-block" href="admin.html">Open beheer →</a>
+    </article>
+
+  </section>
+
+  <footer class="portal__footer">
+    <p><strong>H20 Esports Campus Amsterdam</strong> · Meetingrooms H20</p>
+  </footer>
+</main>
+
+</body>
+</html>

@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Meetingrooms H20 — Inloggen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body class="auth-page">
+
+<main class="auth-shell">
+  <div class="auth-card">
+    <img class="auth-logo" src="Logo H20 2026.png" alt="H20" />
+    <h1>Meetingrooms H20 · Dashboard</h1>
+    <p class="auth-sub">Log in om het centrale overzicht en het gebruikersbeheer te openen.</p>
+
+    <!-- PIN SETUP -->
+    <form id="pinSetupForm" class="auth-form" style="display:none;">
+      <h2>Pincode instellen</h2>
+      <p class="auth-sub" id="pinSetupSub">Kies een pincode van 4 tot 6 cijfers waarmee je snel kunt inchecken bij een vergaderruimte.</p>
+      <div class="field">
+        <label>Naam</label>
+        <input type="text" id="pinSetupName" disabled />
+      </div>
+      <div class="field">
+        <label for="pinSetupPin">Pincode (4–6 cijfers)</label>
+        <input type="password" id="pinSetupPin" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required autocomplete="off" placeholder="••••" />
+      </div>
+      <div class="field">
+        <label for="pinSetupPin2">Herhaal pincode</label>
+        <input type="password" id="pinSetupPin2" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required autocomplete="off" placeholder="••••" />
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Pincode instellen</button>
+    </form>
+
+    <!-- INVITE (account aanmaken) -->
+    <form id="inviteForm" class="auth-form" style="display:none;">
+      <h2>Account aanmaken</h2>
+      <p class="auth-sub" id="inviteSub">Je bent uitgenodigd. Kies een wachtwoord om je account aan te maken.</p>
+      <div class="field">
+        <label>Naam</label>
+        <input type="text" id="inviteName" disabled />
+      </div>
+      <div class="field">
+        <label>E-mail</label>
+        <input type="email" id="inviteEmailField" disabled />
+      </div>
+      <div class="field">
+        <label for="invitePwd">Kies een wachtwoord (min. 6 tekens)</label>
+        <input type="password" id="invitePwd" required minlength="6" autocomplete="new-password" />
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Account aanmaken</button>
+    </form>
+
+    <!-- LOGIN -->
+    <form id="loginForm" class="auth-form" autocomplete="on">
+      <div class="field">
+        <label for="loginEmail">E-mail</label>
+        <input type="email" id="loginEmail" required autocomplete="username" placeholder="tom@h20.gg" />
+      </div>
+      <div class="field">
+        <label for="loginPwd">Wachtwoord</label>
+        <input type="password" id="loginPwd" required autocomplete="current-password" />
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Inloggen</button>
+      <div class="auth-row">
+        <button type="button" class="btn-link" id="forgotBtn">Wachtwoord vergeten?</button>
+        <a class="btn-link" href="index.html">← Terug</a>
+      </div>
+    </form>
+
+    <!-- FORGOT PASSWORD -->
+    <form id="forgotForm" class="auth-form" style="display:none;">
+      <h2>Wachtwoord resetten</h2>
+      <p class="auth-sub">Vul je e-mailadres in. Je krijgt een 6-cijferige code waarmee je een nieuw wachtwoord kunt instellen.</p>
+      <div class="field">
+        <label for="forgotEmail">E-mail</label>
+        <input type="email" id="forgotEmail" required />
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Verstuur reset-code</button>
+      <div class="auth-row">
+        <button type="button" class="btn-link" data-back>← Terug naar inloggen</button>
+      </div>
+    </form>
+
+    <!-- RESET TOKEN -->
+    <form id="resetForm" class="auth-form" style="display:none;">
+      <h2>Nieuw wachtwoord</h2>
+      <p class="auth-sub">Voer de reset-code en je nieuwe wachtwoord in.</p>
+      <div class="field">
+        <label for="resetEmail">E-mail</label>
+        <input type="email" id="resetEmail" required />
+      </div>
+      <div class="field">
+        <label for="resetToken">Reset-code (6 cijfers)</label>
+        <input type="text" id="resetToken" required inputmode="numeric" pattern="[0-9]*" maxlength="6" />
+      </div>
+      <div class="field">
+        <label for="resetPwd">Nieuw wachtwoord</label>
+        <input type="password" id="resetPwd" required minlength="6" autocomplete="new-password" />
+      </div>
+      <button class="btn btn-primary btn-block" type="submit">Wachtwoord instellen</button>
+      <div class="auth-row">
+        <button type="button" class="btn-link" data-back>← Terug</button>
+      </div>
+    </form>
+
+    <p class="auth-footer">
+      H20 Esports Campus · Demo-auth (lokaal). In productie wordt dit Supabase Auth.
+    </p>
+  </div>
+</main>
+
+<script src="app.js"></script>
+<script src="auth.js"></script>
+<script>
+(async function () {
+  await Auth.ensureSeed();
+
+  const params = new URLSearchParams(location.search);
+  const inviteToken    = params.get('invite');
+  const resetPayload   = params.get('reset');
+  const pinSetupPayload = params.get('setpin');
+
+  const loginForm    = document.getElementById('loginForm');
+  const forgotForm   = document.getElementById('forgotForm');
+  const resetForm    = document.getElementById('resetForm');
+  const inviteForm   = document.getElementById('inviteForm');
+  const pinSetupForm = document.getElementById('pinSetupForm');
+
+  function show(form) {
+    [loginForm, forgotForm, resetForm, inviteForm, pinSetupForm].forEach((f) => f.style.display = f === form ? '' : 'none');
+  }
+
+  // INVITE flow takes priority over auto-redirect
+  if (inviteToken) {
+    const inv = Auth.getInvite(inviteToken);
+    if (!inv) {
+      H20.toast({ type: 'error', title: 'Ongeldige uitnodiging',
+        message: 'Deze uitnodigingslink is verlopen of bestaat niet meer. Vraag een admin om een nieuwe.', duration: 12000 });
+    } else {
+      // If currently logged in as someone else, log out so the invite can land cleanly
+      if (Auth.getCurrentUser()) Auth.logout();
+      document.getElementById('inviteName').value = inv.name;
+      document.getElementById('inviteEmailField').value = inv.email;
+      document.getElementById('inviteSub').textContent =
+        `${inv.name}, je bent uitgenodigd als ${inv.role === 'admin' ? 'admin' : 'gebruiker'}. Kies een wachtwoord.`;
+      show(inviteForm);
+      inviteForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pwd = document.getElementById('invitePwd').value;
+        const res = await Auth.consumeInvite(inviteToken, pwd);
+        if (!res.ok) {
+          const map = {
+            'invalid-or-expired': 'Uitnodiging is verlopen.',
+            'weak-password': 'Wachtwoord moet minimaal 6 tekens zijn.',
+            'duplicate-email': 'Dit e-mailadres bestaat al.',
+          };
+          H20.toast({ type: 'error', message: map[res.reason] || res.reason });
+          return;
+        }
+        H20.toast({ type: 'success', message: `Welkom, ${res.user.name}!` });
+        setTimeout(() => location.replace('dashboard.html'), 500);
+      });
+      return; // skip rest
+    }
+  }
+
+  // RESET LINK flow (admin-generated reset link)
+  if (resetPayload) {
+    const decoded = Auth.decodeResetLink(resetPayload);
+    if (!decoded) {
+      H20.toast({ type: 'error', title: 'Ongeldige reset-link',
+        message: 'Deze reset-link is verlopen of ongeldig. Vraag een admin om een nieuwe.', duration: 12000 });
+    } else {
+      if (Auth.getCurrentUser()) Auth.logout();
+      document.getElementById('resetEmail').value = decoded.email;
+      document.getElementById('resetToken').value = decoded.token;
+      show(resetForm);
+      resetForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pwd = document.getElementById('resetPwd').value;
+        const res = await Auth.resetPasswordWithToken(decoded.email, decoded.token, pwd);
+        if (!res.ok) {
+          const map = {
+            'invalid-token': 'Reset-link is ongeldig.',
+            'expired': 'Reset-link is verlopen — vraag een admin om een nieuwe.',
+            'weak-password': 'Wachtwoord moet minimaal 6 tekens zijn.',
+            'not-found': 'Gebruiker niet gevonden.',
+          };
+          H20.toast({ type: 'error', message: map[res.reason] || 'Reset mislukt.' });
+          return;
+        }
+        H20.toast({ type: 'success', message: 'Wachtwoord ingesteld. Je kunt nu inloggen.' });
+        setTimeout(() => location.replace('login.html'), 800);
+      });
+      return;
+    }
+  }
+
+  // PIN SETUP flow
+  if (pinSetupPayload) {
+    const decoded = Auth.decodePinSetupPayload(pinSetupPayload);
+    if (!decoded) {
+      H20.toast({ type: 'error', title: 'Ongeldige PIN-link',
+        message: 'Deze link is verlopen of ongeldig. Vraag een admin om een nieuwe.', duration: 12000 });
+    } else {
+      document.getElementById('pinSetupName').value = decoded.name;
+      document.getElementById('pinSetupSub').textContent =
+        `Hoi ${decoded.name}! Kies een pincode van 4 tot 6 cijfers waarmee je snel kunt inchecken bij een vergaderruimte.`;
+      show(pinSetupForm);
+      pinSetupForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const pin  = document.getElementById('pinSetupPin').value;
+        const pin2 = document.getElementById('pinSetupPin2').value;
+        if (!/^\d{4,6}$/.test(pin)) {
+          H20.toast({ type: 'error', message: 'Pincode moet uit 4 tot 6 cijfers bestaan.' }); return;
+        }
+        if (pin !== pin2) {
+          H20.toast({ type: 'error', message: 'Pincodes komen niet overeen.' }); return;
+        }
+        const res = await Auth.consumePinSetup(pinSetupPayload, pin);
+        if (!res.ok) {
+          const map = { 'invalid-or-expired': 'Link is verlopen.', 'invalid-pin': 'Ongeldige pincode.', 'not-found': 'Gebruiker niet gevonden.' };
+          H20.toast({ type: 'error', message: map[res.reason] || 'Instellen mislukt.' }); return;
+        }
+        H20.toast({ type: 'success', message: `Pincode ingesteld voor ${res.user.name}! Je kunt nu snel inchecken bij de vergaderruimtes.`, duration: 8000 });
+        setTimeout(() => location.replace('login.html'), 1000);
+      });
+      return;
+    }
+  }
+
+  // Already logged in? Redirect.
+  if (Auth.getCurrentUser()) {
+    const next = params.get('next') || 'dashboard.html';
+    location.replace(next);
+    return;
+  }
+
+  document.getElementById('forgotBtn').addEventListener('click', () => show(forgotForm));
+  document.querySelectorAll('[data-back]').forEach((b) =>
+    b.addEventListener('click', () => show(loginForm))
+  );
+
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('loginEmail').value;
+    const pwd = document.getElementById('loginPwd').value;
+    const res = await Auth.login(email, pwd);
+    if (!res.ok) {
+      H20.toast({ type: 'error', title: 'Inloggen mislukt',
+        message: res.reason === 'unknown-user' ? 'Onbekend e-mailadres.' :
+                 res.reason === 'bad-password' ? 'Onjuist wachtwoord.' : 'Probeer het opnieuw.' });
+      return;
+    }
+    H20.toast({ type: 'success', message: `Welkom terug, ${res.user.name}.` });
+    const next = new URLSearchParams(location.search).get('next') || 'dashboard.html';
+    setTimeout(() => location.replace(next), 400);
+  });
+
+  forgotForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('forgotEmail').value;
+    const res = Auth.requestPasswordReset(email);
+    if (!res.ok) {
+      H20.toast({ type: 'error', message: 'Onbekend e-mailadres.' });
+      return;
+    }
+    // In demo: show the token on-screen (no email server). In productie: stuur via SMTP/Supabase.
+    H20.toast({
+      type: 'info',
+      title: 'Reset-code aangemaakt',
+      message: `Demo: code is <strong>${res.token}</strong> (geldig 30 min). In productie wordt deze gemaild.`,
+      duration: 20000,
+    });
+    document.getElementById('resetEmail').value = email;
+    document.getElementById('resetToken').value = res.token;
+    show(resetForm);
+  });
+
+  resetForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = document.getElementById('resetEmail').value;
+    const token = document.getElementById('resetToken').value;
+    const pwd = document.getElementById('resetPwd').value;
+    const res = await Auth.resetPasswordWithToken(email, token, pwd);
+    if (!res.ok) {
+      const map = {
+        'invalid-token': 'Code klopt niet.',
+        'expired': 'Code is verlopen — vraag een nieuwe aan.',
+        'weak-password': 'Wachtwoord moet minimaal 6 tekens zijn.',
+        'not-found': 'Gebruiker niet gevonden.',
+      };
+      H20.toast({ type: 'error', message: map[res.reason] || 'Reset mislukt.' });
+      return;
+    }
+    H20.toast({ type: 'success', message: 'Wachtwoord bijgewerkt. Je kunt nu inloggen.' });
+    show(loginForm);
+    document.getElementById('loginEmail').value = email;
+    document.getElementById('loginPwd').focus();
+  });
+})();
+</script>
+</body>
+</html>

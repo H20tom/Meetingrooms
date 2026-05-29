@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+server/node_modules/
+
+# Environment & secrets — NOOIT committen
+.env
+.env.local
+server/.env
+*.pem
+*.key
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS / editor rommel
+.DS_Store
+Thumbs.db
+*.swp
+
+# Behoud wel de voorbeeld-config
+!.env.example
+!server/.env.example
