@@ -245,20 +245,23 @@ router.get('/invites/:token', wrap(async (req, res) => {
 }));
 
 router.post('/invites/:token/consume', wrap(async (req, res) => {
-  const { password } = req.body || {};
+  const { password, pin } = req.body || {};
   const [rows] = await pool.execute(
     'SELECT * FROM invites WHERE token = ? AND expires_at > UTC_TIMESTAMP() LIMIT 1',
     [req.params.token],
   );
   if (!rows.length) return res.json({ ok: false, reason: 'invalid-or-expired' });
   if (!password || String(password).length < 6) return res.json({ ok: false, reason: 'weak-password' });
+  // PIN is verplicht bij account aanmaken: staat meteen op het account voor de tablet-check-in.
+  if (!isValidPin(pin)) return res.json({ ok: false, reason: 'invalid-pin' });
   const inv = rows[0];
   if (await findUserByEmail(inv.email)) return res.json({ ok: false, reason: 'duplicate-email' });
   const id = newUserId();
   const hash = await hashPassword(password);
+  const pinHash = await hashPassword(String(pin));
   await pool.execute(
-    'INSERT INTO users (id, email, name, role, password_hash, created_at, invited_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [id, inv.email, inv.name, inv.role, hash, nowUtc(), inv.invited_by],
+    'INSERT INTO users (id, email, name, role, password_hash, pin_hash, created_at, invited_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    [id, inv.email, inv.name, inv.role, hash, pinHash, nowUtc(), inv.invited_by],
   );
   await pool.execute('DELETE FROM invites WHERE token = ?', [inv.token]);
   // Auto-login.

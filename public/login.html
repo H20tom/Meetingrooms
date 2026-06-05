@@ -60,6 +60,14 @@
         <label for="invitePwd">Kies een wachtwoord (min. 6 tekens)</label>
         <input type="password" id="invitePwd" required minlength="6" autocomplete="new-password" />
       </div>
+      <div class="field">
+        <label for="invitePin">Pincode (4–6 cijfers)</label>
+        <input type="password" id="invitePin" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required autocomplete="off" placeholder="••••" />
+      </div>
+      <div class="field">
+        <label for="invitePin2">Herhaal pincode</label>
+        <input type="password" id="invitePin2" inputmode="numeric" pattern="[0-9]*" minlength="4" maxlength="6" required autocomplete="off" placeholder="••••" />
+      </div>
       <button class="btn btn-primary btn-block" type="submit">Account aanmaken</button>
     </form>
 
@@ -151,16 +159,25 @@
       document.getElementById('inviteName').value = inv.name;
       document.getElementById('inviteEmailField').value = inv.email;
       document.getElementById('inviteSub').textContent =
-        `${inv.name}, je bent uitgenodigd als ${inv.role === 'admin' ? 'admin' : 'gebruiker'}. Kies een wachtwoord.`;
+        `${inv.name}, je bent uitgenodigd als ${inv.role === 'admin' ? 'admin' : 'gebruiker'}. Kies een wachtwoord en een pincode.`;
       show(inviteForm);
       inviteForm.addEventListener('submit', async (e) => {
         e.preventDefault();
-        const pwd = document.getElementById('invitePwd').value;
-        const res = await Auth.consumeInvite(inviteToken, pwd);
+        const pwd  = document.getElementById('invitePwd').value;
+        const pin  = document.getElementById('invitePin').value;
+        const pin2 = document.getElementById('invitePin2').value;
+        if (!/^\d{4,6}$/.test(pin)) {
+          H20.toast({ type: 'error', message: 'Pincode moet uit 4 tot 6 cijfers bestaan.' }); return;
+        }
+        if (pin !== pin2) {
+          H20.toast({ type: 'error', message: 'Pincodes komen niet overeen.' }); return;
+        }
+        const res = await Auth.consumeInvite(inviteToken, pwd, pin);
         if (!res.ok) {
           const map = {
             'invalid-or-expired': 'Uitnodiging is verlopen.',
             'weak-password': 'Wachtwoord moet minimaal 6 tekens zijn.',
+            'invalid-pin': 'Pincode moet uit 4 tot 6 cijfers bestaan.',
             'duplicate-email': 'Dit e-mailadres bestaat al.',
           };
           H20.toast({ type: 'error', message: map[res.reason] || res.reason });

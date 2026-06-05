@@ -125,8 +125,8 @@ async function getInvite(token) {
   return r.ok && r.invite ? r.invite : null;
 }
 
-async function consumeInvite(token, password) {
-  return api(`/invites/${encodeURIComponent(token)}/consume`, { method: 'POST', body: { password } });
+async function consumeInvite(token, password, pin) {
+  return api(`/invites/${encodeURIComponent(token)}/consume`, { method: 'POST', body: { password, pin } });
 }
 
 async function listInvites() {
