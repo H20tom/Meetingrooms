@@ -243,7 +243,12 @@ if ('serviceWorker' in navigator) {
             <span class="meta-item__value">${isAvail ? 'nu' : metaEnd}</span>
           </div>
         </div>
-        ${!isAvail ? `<div class="room-card__actions"><button class="btn btn-danger btn-sm" data-end-now="${room.id}">Beëindigen</button></div>` : ''}
+        ${!isAvail ? `<div class="room-card__actions">
+          <button class="btn btn-ghost btn-sm" data-extend="15" data-room="${room.id}">+15</button>
+          <button class="btn btn-ghost btn-sm" data-extend="30" data-room="${room.id}">+30</button>
+          <button class="btn btn-ghost btn-sm" data-extend="60" data-room="${room.id}">+60</button>
+          <button class="btn btn-danger btn-sm" data-end-now="${room.id}">Beëindigen</button>
+        </div>` : ''}
         ${scheduleHTML(room.id, scheduledList)}
       </article>
     `;
@@ -345,6 +350,40 @@ if ('serviceWorker' in navigator) {
   });
 
   grid.addEventListener('click', async (e) => {
+    const extendBtn = e.target.closest('button[data-extend]');
+    if (extendBtn) {
+      const roomId = extendBtn.dataset.room;
+      const room = H20.ROOMS[roomId];
+      const add = parseInt(extendBtn.dataset.extend, 10);
+      const result = await H20.extendMeeting(roomId, add);
+      if (!result.ok && result.conflictWith) {
+        const next = result.conflictWith;
+        const max = result.maxMinutes;
+        H20.toast({
+          type: 'error',
+          title: 'Niet mogelijk om te verlengen',
+          message: `In ${room ? room.name : 'deze ruimte'} begint om <strong>${H20.fmtTime(new Date(next.startAt))}</strong> een geplande meeting${next.title ? ` (${next.title})` : ''}. Je kunt maximaal <strong>+${max} ${max === 1 ? 'minuut' : 'minuten'}</strong> verlengen.`,
+          action: max >= 5 ? {
+            label: `Wel +${max} min verlengen`,
+            onClick: async () => {
+              const r2 = await H20.extendMeeting(roomId, max);
+              if (r2.ok) {
+                H20.toast({ type: 'success', message: `Verlengd tot ${H20.fmtTime(r2.newEnd)}.` });
+                await render();
+              }
+            },
+          } : null,
+        });
+        return;
+      }
+      if (result.ok) {
+        H20.toast({ type: 'success', title: 'Verlengd', message: `${room ? room.name : 'Ruimte'} met ${add} min verlengd${result.newEnd ? ` tot ${H20.fmtTime(result.newEnd)}` : ''}.` });
+        await render();
+      } else {
+        H20.toast({ type: 'error', message: result.reason === 'not-busy' ? 'Er loopt geen meeting in deze ruimte.' : 'Verlengen mislukt.' });
+      }
+      return;
+    }
     const endBtn = e.target.closest('button[data-end-now]');
     if (endBtn) {
       openEndModal(endBtn.dataset.endNow);

@@ -1,7 +1,7 @@
 /* ============================================================
    H20 Meetingroom — Service Worker (offline cache)
    ============================================================ */
-const CACHE_VERSION = 'h20-meetingroom-v15';
+const CACHE_VERSION = 'h20-meetingroom-v16';
 const CORE = [
   './',
   './index.html',
