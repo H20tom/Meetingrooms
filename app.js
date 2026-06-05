@@ -35,6 +35,10 @@ async function apiFetch(path, opts = {}) {
   }
   try {
     const res = await fetch(`/api${path}`, init);
+    // Centrale 401-afhandeling: laat beveiligde pagina's reageren (redirect).
+    if (res.status === 401) {
+      try { window.dispatchEvent(new CustomEvent('h20:unauthorized')); } catch {}
+    }
     let json = null;
     try { json = await res.json(); } catch { json = null; }
     if (json == null) return { ok: false, reason: res.ok ? 'empty-response' : 'http-' + res.status, status: res.status };
@@ -43,6 +47,13 @@ async function apiFetch(path, opts = {}) {
   } catch {
     return { ok: false, reason: 'network' };
   }
+}
+
+// HTML-escape voor alles wat als tekst in innerHTML belandt (XSS-preventie).
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
 }
 
 // ---------- helpers ----------
@@ -105,7 +116,9 @@ function historyToCsv(rows, opts = {}) {
 // oude localStorage-versie), zodat dashboard/tablet ongewijzigd blijven.
 async function getRoomStatus(roomId) {
   const r = await apiFetch(`/rooms/${encodeURIComponent(roomId)}/status`);
-  if (!r.ok || !r.data) return { status: 'available' };
+  // Faal niet stil naar 'available' bij netwerk/serverfout: dat zou een bezette
+  // ruimte als vrij tonen. Geef 'unknown' zodat de UI dat expliciet kan tonen.
+  if (!r.ok || !r.data) return { status: 'unknown' };
   const d = r.data;
   if (d.status !== 'busy') return { status: 'available' };
   const now = new Date();
@@ -263,7 +276,7 @@ function startClock(timeEl, dateEl) {
 
 window.H20 = {
   ROOMS, EMAIL_DOMAINS,
-  apiFetch,
+  apiFetch, escapeHtml,
   fmtTime, fmtDate, fmtDateShort, minutesBetween,
   isValidEmail, getLastEmail, setLastEmail,
   getRoomStatus, getScheduled, nextScheduledAfter,

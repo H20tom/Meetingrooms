@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
 <title>Meetingrooms H20 — Beheer</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -10,6 +11,13 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+
+<noscript>
+  <div style="max-width:520px;margin:48px auto;padding:24px;font-family:system-ui,sans-serif;text-align:center;">
+    <h1>JavaScript vereist</h1>
+    <p>Het beheerpaneel heeft JavaScript nodig. Schakel JavaScript in en herlaad de pagina.</p>
+  </div>
+</noscript>
 
 <main class="admin">
   <header class="admin__header">
@@ -109,7 +117,7 @@
         <tbody></tbody>
       </table>
     </div>
-    <p class="admin__hint">In productie worden codes per e-mail verstuurd. In de huidige demo zie je ze hier zodat je gebruikers kunt helpen.</p>
+    <p class="admin__hint">Gebruik "🔁 Wachtwoord-link" bij een gebruiker om een reset-link te maken. Openstaande, nog niet gebruikte resets staan hier tot ze verlopen.</p>
   </section>
 
   <!-- KIOSK -->
@@ -231,6 +239,13 @@
 (async function () {
   const me = await Auth.requireAdmin();
   if (!me) return;
+  // Sessie verloopt mid-sessie → centrale 401 → terug naar login.
+  let redirecting = false;
+  window.addEventListener('h20:unauthorized', () => {
+    if (redirecting) return;
+    redirecting = true;
+    location.replace('login.html');
+  });
   document.getElementById('adminMe').textContent = `${me.name} (${me.email})`;
 
   document.getElementById('logoutBtn').addEventListener('click', async () => {
@@ -244,9 +259,9 @@
     const users = await Auth.listUsers();
     tbody.innerHTML = users.map((u) => `
       <tr data-id="${u.id}">
-        <td>${u.name}</td>
-        <td>${u.email}</td>
-        <td><span class="role-pill role-${u.role}">${u.role}</span></td>
+        <td>${escapeHtml(u.name)}</td>
+        <td>${escapeHtml(u.email)}</td>
+        <td><span class="role-pill role-${u.role}">${escapeHtml(u.role)}</span></td>
         <td>${new Date(u.createdAt).toLocaleDateString('nl-NL')}</td>
         <td class="row-actions">
           <button class="btn-link" data-edit="${u.id}">Bewerken</button>
@@ -358,7 +373,7 @@
     const rb = document.querySelector('#resetsTable tbody');
     const list = await Auth.listPendingResets();
     rb.innerHTML = list.length ? list.map((r) => `
-      <tr><td>${r.email}</td><td><code>${r.token}</code></td>
+      <tr><td>${escapeHtml(r.email)}</td><td><code>${escapeHtml(r.token)}</code></td>
       <td>${new Date(r.expiresAt).toLocaleString('nl-NL')}</td></tr>
     `).join('') : `<tr><td colspan="3" class="empty">Geen openstaande resets.</td></tr>`;
   }
@@ -556,9 +571,9 @@ H20 Esports Campus`;
       const link = `${location.origin}${location.pathname.replace(/[^/]*$/, '')}login.html?invite=${i.token}`;
       return `
         <tr data-token="${i.token}">
-          <td>${i.name}</td>
-          <td>${i.email}</td>
-          <td><span class="role-pill role-${i.role}">${i.role}</span></td>
+          <td>${escapeHtml(i.name)}</td>
+          <td>${escapeHtml(i.email)}</td>
+          <td><span class="role-pill role-${i.role}">${escapeHtml(i.role)}</span></td>
           <td>${new Date(i.expiresAt).toLocaleDateString('nl-NL')}</td>
           <td class="row-actions">
             <button class="btn-link" data-copy="${link}">📋 Link kopiëren</button>

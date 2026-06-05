@@ -105,8 +105,11 @@ async function resetPasswordWithToken(email, token, newPassword) {
   return api('/auth/reset/consume', { method: 'POST', body: { email, token, newPassword } });
 }
 
-// Geen server-endpoint om openstaande resets te lijsten (transient).
-async function listPendingResets() { return []; }
+// Openstaande resets (admin-only endpoint).
+async function listPendingResets() {
+  const r = await api('/auth/resets');
+  return r.ok && Array.isArray(r.data) ? r.data : [];
+}
 
 // ---------- uitnodigingen ----------
 async function createInvite({ email, name, role }) {

@@ -34,13 +34,10 @@ async function getActive(roomId) {
 }
 
 async function getScheduledRows(roomId, conn = pool) {
-  // Verwijder afgelopen geplande items (auto-purge), retourneer komende gesorteerd.
-  await conn.execute(
-    'DELETE FROM scheduled_meetings WHERE room_id = ? AND end_at <= UTC_TIMESTAMP()',
-    [roomId],
-  );
+  // Lees-pad: muteer niets. Filter afgelopen items via WHERE i.p.v. een DELETE
+  // (een GET hoort geen side-effects te hebben). Opruimen gebeurt apart.
   const [rows] = await conn.execute(
-    'SELECT * FROM scheduled_meetings WHERE room_id = ? ORDER BY start_at ASC',
+    'SELECT * FROM scheduled_meetings WHERE room_id = ? AND end_at > UTC_TIMESTAMP() ORDER BY start_at ASC',
     [roomId],
   );
   return rows;
@@ -280,8 +277,16 @@ router.get('/history', requireAuth, wrap(async (req, res) => {
 }));
 
 router.delete('/history', requireAdmin, wrap(async (req, res) => {
-  await pool.query('DELETE FROM meeting_history');
-  res.json({ ok: true });
+  // Optionele filters; zonder filters wist dit alles (zoals voorheen).
+  const { roomId = null, from = null, to = null } = req.query;
+  const clauses = [];
+  const params = [];
+  if (roomId) { clauses.push('room_id = ?'); params.push(roomId); }
+  if (from) { clauses.push('started_at >= ?'); params.push(toDb(from)); }
+  if (to) { clauses.push('started_at <= ?'); params.push(toDb(to)); }
+  const where = clauses.length ? 'WHERE ' + clauses.join(' AND ') : '';
+  const [r] = await pool.execute(`DELETE FROM meeting_history ${where}`, params);
+  res.json({ ok: true, deleted: r.affectedRows });
 }));
 
 module.exports = router;

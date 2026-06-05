@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS password_resets (
   id          BIGINT       NOT NULL AUTO_INCREMENT,
   user_id     VARCHAR(64)  NOT NULL,
   email       VARCHAR(255) NOT NULL,
-  token       VARCHAR(16)  NOT NULL,
+  token       VARCHAR(64)  NOT NULL,
   expires_at  DATETIME     NOT NULL,
   created_at  DATETIME     NOT NULL,
   PRIMARY KEY (id),

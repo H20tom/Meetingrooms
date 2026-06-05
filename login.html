@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
 <title>Meetingrooms H20 — Inloggen</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -10,6 +11,13 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body class="auth-page">
+
+<noscript>
+  <div style="max-width:520px;margin:48px auto;padding:24px;font-family:system-ui,sans-serif;text-align:center;">
+    <h1>JavaScript vereist</h1>
+    <p>Meetingrooms H20 heeft JavaScript nodig om in te loggen. Schakel JavaScript in en herlaad de pagina.</p>
+  </div>
+</noscript>
 
 <main class="auth-shell">
   <div class="auth-card">
@@ -67,36 +75,22 @@
       </div>
       <button class="btn btn-primary btn-block" type="submit">Inloggen</button>
       <div class="auth-row">
-        <button type="button" class="btn-link" id="forgotBtn">Wachtwoord vergeten?</button>
+        <span class="auth-hint">Wachtwoord vergeten? Vraag een beheerder om een reset-link.</span>
         <a class="btn-link" href="index.html">← Terug</a>
-      </div>
-    </form>
-
-    <!-- FORGOT PASSWORD -->
-    <form id="forgotForm" class="auth-form" style="display:none;">
-      <h2>Wachtwoord resetten</h2>
-      <p class="auth-sub">Vul je e-mailadres in. Je krijgt een 6-cijferige code waarmee je een nieuw wachtwoord kunt instellen.</p>
-      <div class="field">
-        <label for="forgotEmail">E-mail</label>
-        <input type="email" id="forgotEmail" required />
-      </div>
-      <button class="btn btn-primary btn-block" type="submit">Verstuur reset-code</button>
-      <div class="auth-row">
-        <button type="button" class="btn-link" data-back>← Terug naar inloggen</button>
       </div>
     </form>
 
     <!-- RESET TOKEN -->
     <form id="resetForm" class="auth-form" style="display:none;">
       <h2>Nieuw wachtwoord</h2>
-      <p class="auth-sub">Voer de reset-code en je nieuwe wachtwoord in.</p>
+      <p class="auth-sub">Stel je nieuwe wachtwoord in. De reset-code uit de link is al ingevuld.</p>
       <div class="field">
         <label for="resetEmail">E-mail</label>
         <input type="email" id="resetEmail" required />
       </div>
       <div class="field">
-        <label for="resetToken">Reset-code (6 cijfers)</label>
-        <input type="text" id="resetToken" required inputmode="numeric" pattern="[0-9]*" maxlength="6" />
+        <label for="resetToken">Reset-code</label>
+        <input type="text" id="resetToken" required readonly autocomplete="off" />
       </div>
       <div class="field">
         <label for="resetPwd">Nieuw wachtwoord</label>
@@ -127,13 +121,12 @@
   const pinSetupToken  = params.get('setpin');
 
   const loginForm    = document.getElementById('loginForm');
-  const forgotForm   = document.getElementById('forgotForm');
   const resetForm    = document.getElementById('resetForm');
   const inviteForm   = document.getElementById('inviteForm');
   const pinSetupForm = document.getElementById('pinSetupForm');
 
   function show(form) {
-    [loginForm, forgotForm, resetForm, inviteForm, pinSetupForm].forEach((f) => f.style.display = f === form ? '' : 'none');
+    [loginForm, resetForm, inviteForm, pinSetupForm].forEach((f) => f.style.display = f === form ? '' : 'none');
   }
 
   // Sta alleen lokale, relatieve doelen toe (geen open-redirect naar externe sites).
@@ -246,7 +239,6 @@
     return;
   }
 
-  document.getElementById('forgotBtn').addEventListener('click', () => show(forgotForm));
   document.querySelectorAll('[data-back]').forEach((b) =>
     b.addEventListener('click', () => show(loginForm))
   );
@@ -258,33 +250,12 @@
     const res = await Auth.login(email, pwd);
     if (!res.ok) {
       H20.toast({ type: 'error', title: 'Inloggen mislukt',
-        message: res.reason === 'unknown-user' ? 'Onbekend e-mailadres.' :
-                 res.reason === 'bad-password' ? 'Onjuist wachtwoord.' : 'Probeer het opnieuw.' });
+        message: res.reason === 'invalid-credentials' ? 'E-mailadres of wachtwoord onjuist.' : 'Probeer het opnieuw.' });
       return;
     }
-    H20.toast({ type: 'success', message: `Welkom terug, ${res.user.name}.` });
+    H20.toast({ type: 'success', message: `Welkom terug, ${H20.escapeHtml(res.user.name)}.` });
     const next = safeNext(new URLSearchParams(location.search).get('next'));
     setTimeout(() => location.replace(next), 400);
-  });
-
-  forgotForm.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    const email = document.getElementById('forgotEmail').value;
-    const res = await Auth.requestPasswordReset(email);
-    if (!res.ok) {
-      H20.toast({ type: 'error', message: 'Onbekend e-mailadres.' });
-      return;
-    }
-    // In demo: show the token on-screen (no email server). In productie: stuur via SMTP/Supabase.
-    H20.toast({
-      type: 'info',
-      title: 'Reset-code aangemaakt',
-      message: `Demo: code is <strong>${res.token}</strong> (geldig 24 uur). In productie wordt deze gemaild.`,
-      duration: 20000,
-    });
-    document.getElementById('resetEmail').value = email;
-    document.getElementById('resetToken').value = res.token;
-    show(resetForm);
   });
 
   resetForm.addEventListener('submit', async (e) => {

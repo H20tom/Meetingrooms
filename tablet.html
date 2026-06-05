@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="robots" content="noindex, nofollow" />
 <title>Meetingrooms H20 — Tablet</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -10,6 +11,13 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+
+<noscript>
+  <div style="max-width:520px;margin:48px auto;padding:24px;font-family:system-ui,sans-serif;text-align:center;">
+    <h1>JavaScript vereist</h1>
+    <p>Deze tablet-weergave heeft JavaScript nodig. Schakel JavaScript in en herlaad de pagina.</p>
+  </div>
+</noscript>
 
 <main class="tablet" id="tablet" data-status="available" style="visibility:hidden">
   <header class="tablet__header">
@@ -241,7 +249,7 @@
 </div>
 
 <div class="offline-banner" id="offlineBanner" style="display:none;">
-  Offline — wijzigingen worden lokaal bewaard tot de verbinding terugkeert.
+  Offline — acties zijn tijdelijk niet beschikbaar. De pagina werkt weer zodra de verbinding terugkeert.
 </div>
 
 <script src="app.js?v=2"></script>
@@ -272,6 +280,15 @@ syncOnlineFlag();
   const me = await Auth.requireLogin();
   if (!me) return;
   document.getElementById('tablet').style.visibility = 'visible';
+
+  // Centrale 401-afhandeling: als de sessie verloopt, terug naar login
+  // (met behoud van ?room= zodat we naar deze ruimte terugkeren).
+  let redirecting = false;
+  window.addEventListener('h20:unauthorized', () => {
+    if (redirecting) return;
+    redirecting = true;
+    location.replace('login.html?next=' + encodeURIComponent(location.pathname + location.search));
+  });
 
   document.title = `H20 · ${room.name}`;
   document.getElementById('roomName').textContent = room.name;
@@ -401,6 +418,22 @@ syncOnlineFlag();
     rendering = true;
     try {
       const s = await H20.getRoomStatus(roomId);
+      if (s.status === 'unknown') {
+        // Geen valse "Beschikbaar": status kon niet worden opgehaald
+        // (server/netwerk). Toon een neutrale toestand zonder acties.
+        tabletEl.dataset.status = 'unknown';
+        statusText.textContent = 'Status onbekend';
+        statusSub.textContent = 'Verbinding met de server mislukt — opnieuw proberen…';
+        bookedBy.style.display = 'none';
+        availActions.style.display = 'none';
+        planBtn.style.display = 'none';
+        busyActions.style.display = 'none';
+        endBtn.style.display = 'none';
+        const busyTitleEl = document.getElementById('busyTitle');
+        if (busyTitleEl) { busyTitleEl.textContent = ''; busyTitleEl.style.display = 'none'; }
+        nextLabel.textContent = '';
+        return;
+      }
       if (s.status === 'available') {
         tabletEl.dataset.status = 'available';
         statusText.textContent = 'Beschikbaar';
@@ -444,6 +477,18 @@ syncOnlineFlag();
         await updateExtendConflictHints();
       }
       await updateNextScheduledLabel();
+    } catch (err) {
+      // Onverwachte fout tijdens render: val terug op neutrale toestand i.p.v.
+      // een vastgelopen of misleidende weergave.
+      console.error('[tablet] render faalde:', err);
+      tabletEl.dataset.status = 'unknown';
+      statusText.textContent = 'Status onbekend';
+      statusSub.textContent = 'Er ging iets mis — opnieuw proberen…';
+      bookedBy.style.display = 'none';
+      availActions.style.display = 'none';
+      planBtn.style.display = 'none';
+      busyActions.style.display = 'none';
+      endBtn.style.display = 'none';
     } finally {
       rendering = false;
     }
@@ -903,9 +948,9 @@ syncOnlineFlag();
     if (!users.length) { if (block) block.style.display = 'none'; return; }
     if (block) block.style.display = '';
     gridEl.innerHTML = users.map((u) => `
-      <button type="button" class="user-tile" data-uid="${u.id}" data-uname="${u.name.replace(/"/g, '&quot;')}" data-uemail="${u.email}" data-haspin="${u.hasPin ? '1' : '0'}">
-        <span class="user-tile__initial">${u.name.charAt(0).toUpperCase()}</span>
-        ${u.name}
+      <button type="button" class="user-tile" data-uid="${H20.escapeHtml(u.id)}" data-uname="${H20.escapeHtml(u.name)}" data-uemail="${H20.escapeHtml(u.email)}" data-haspin="${u.hasPin ? '1' : '0'}">
+        <span class="user-tile__initial">${H20.escapeHtml(String(u.name || '').charAt(0).toUpperCase())}</span>
+        ${H20.escapeHtml(u.name)}
       </button>`).join('');
     gridEl.onclick = (e) => {
       const tile = e.target.closest('.user-tile');
@@ -941,6 +986,14 @@ syncOnlineFlag();
   const pinModalSub = document.getElementById('pinModalSub');
   let pinState = { userId: null, userName: null, userEmail: null, context: null };
 
+  // Brute-force-rem: na 5 foute pogingen 30s blokkeren (per gebruiker, client-side).
+  const PIN_MAX_ATTEMPTS = 5;
+  const PIN_LOCK_MS = 30000;
+  const pinLock = Object.create(null); // userId -> { fails, lockedUntil }
+  function pinLockState(userId) {
+    return pinLock[userId] || (pinLock[userId] = { fails: 0, lockedUntil: 0 });
+  }
+
   function openPinModal(userId, userName, userEmail, context) {
     pinState = { userId, userName, userEmail, context };
     pinModalTitle.textContent = `Hoi ${userName}!`;
@@ -962,15 +1015,33 @@ syncOnlineFlag();
   });
 
   document.getElementById('pinConfirm').addEventListener('click', async () => {
+    const lock = pinLockState(pinState.userId);
+    const now = Date.now();
+    if (now < lock.lockedUntil) {
+      const secs = Math.ceil((lock.lockedUntil - now) / 1000);
+      pinError.textContent = `Te veel pogingen. Probeer over ${secs} sec. opnieuw.`;
+      return;
+    }
     const pin = pinInput.value.trim();
     if (!pin) { pinError.textContent = 'Voer een pincode in.'; return; }
     const result = await Auth.verifyUserPin(pinState.userId, pin);
     if (!result.ok) {
+      lock.fails += 1;
       pinInput.value = '';
-      pinError.textContent = 'Onjuiste pincode. Probeer opnieuw.';
-      pinInput.focus();
+      if (lock.fails >= PIN_MAX_ATTEMPTS) {
+        lock.fails = 0;
+        lock.lockedUntil = Date.now() + PIN_LOCK_MS;
+        pinError.textContent = `Te veel pogingen. Geblokkeerd voor ${PIN_LOCK_MS / 1000} sec.`;
+      } else {
+        const left = PIN_MAX_ATTEMPTS - lock.fails;
+        pinError.textContent = `Onjuiste pincode. Nog ${left} ${left === 1 ? 'poging' : 'pogingen'}.`;
+        pinInput.focus();
+      }
       return;
     }
+    // Succes: reset de teller voor deze gebruiker.
+    lock.fails = 0;
+    lock.lockedUntil = 0;
     const email = result.user.email;
     const name = result.user.name;
     pinModal.style.display = 'none';

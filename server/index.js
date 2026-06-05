@@ -27,8 +27,27 @@ app.get('/healthz', async (req, res) => {
     await ping();
     res.json({ ok: true, db: 'up' });
   } catch (err) {
-    res.status(503).json({ ok: false, db: 'down', reason: err.message });
+    // Lek geen DB-foutdetails naar de client; log server-side.
+    console.error('[healthz] DB-ping faalde:', err.message);
+    res.status(503).json({ ok: false, db: 'down' });
   }
+});
+
+// CSRF-mitigatie: state-veranderende /api-requests moeten van een toegestane
+// origin komen (vult SameSite=Lax cookies aan). GET/HEAD/OPTIONS overslaan.
+const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+app.use('/api', (req, res, next) => {
+  if (SAFE_METHODS.has(req.method)) return next();
+  const source = req.headers.origin || req.headers.referer;
+  if (!source) return res.status(403).json({ ok: false, reason: 'missing-origin' });
+  let host;
+  try {
+    host = new URL(source).origin;
+  } catch {
+    return res.status(403).json({ ok: false, reason: 'bad-origin' });
+  }
+  if (!origins.includes(host)) return res.status(403).json({ ok: false, reason: 'forbidden-origin' });
+  next();
 });
 
 app.use('/api', roomsRouter);

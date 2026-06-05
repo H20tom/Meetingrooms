@@ -41,11 +41,6 @@ function newUserId() {
 function utcPlusHours(h) {
   return new Date(Date.now() + h * 3600000).toISOString().slice(0, 19).replace('T', ' ');
 }
-function digitCode(len = 6) {
-  let out = '';
-  for (let i = 0; i < len; i++) out += Math.floor(Math.random() * 10);
-  return out;
-}
 
 function cookieOptions() {
   return {
@@ -75,9 +70,10 @@ async function findUserById(id) {
 router.post('/auth/login', wrap(async (req, res) => {
   const { email, password } = req.body || {};
   const user = await findUserByEmail(email);
-  if (!user) return res.json({ ok: false, reason: 'unknown-user' });
+  // Geen user-enumeratie: zelfde reason voor onbekende user én fout wachtwoord.
+  if (!user) return res.json({ ok: false, reason: 'invalid-credentials' });
   const valid = await verifyPassword(password, user.password_hash);
-  if (!valid) return res.json({ ok: false, reason: 'bad-password' });
+  if (!valid) return res.json({ ok: false, reason: 'invalid-credentials' });
   const token = await createSession(user.id);
   res.cookie(COOKIE_NAME, token, cookieOptions());
   res.json({ ok: true, user: sanitizeUser(user) });
@@ -104,10 +100,13 @@ router.get('/users', requireAuth, wrap(async (req, res) => {
 
 // Lichtgewicht lijst voor de tablet-quickpick (geen auth — alleen niet-gevoelige velden).
 router.get('/users/quickpick', wrap(async (req, res) => {
-  const [rows] = await pool.query('SELECT id, name, email, role, pin_hash FROM users ORDER BY name ASC');
+  // Haal de pin_hash-kolom nooit op; bereken has_pin in SQL.
+  const [rows] = await pool.query(
+    'SELECT id, name, email, role, (pin_hash IS NOT NULL) AS has_pin FROM users ORDER BY name ASC',
+  );
   res.json({
     ok: true,
-    data: rows.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, hasPin: !!u.pin_hash })),
+    data: rows.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, hasPin: !!u.has_pin })),
   });
 }));
 
@@ -276,17 +275,29 @@ router.delete('/invites/:token', requireAdmin, wrap(async (req, res) => {
 // ============================================================
 //  Wachtwoord-resets
 // ============================================================
-router.post('/auth/reset/request', wrap(async (req, res) => {
+// Alleen admins mogen reset-tokens genereren. Een publiek endpoint dat de token
+// teruggeeft is account-overname (iedereen kon een wachtwoord resetten).
+router.post('/auth/reset/request', requireAdmin, wrap(async (req, res) => {
   const user = await findUserByEmail((req.body || {}).email);
   if (!user) return res.json({ ok: false, reason: 'unknown-user' });
-  const token = digitCode(6);
+  const token = randomToken(16);
   // Eén actieve reset per gebruiker.
   await pool.execute('DELETE FROM password_resets WHERE user_id = ?', [user.id]);
   await pool.execute(
     'INSERT INTO password_resets (user_id, email, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)',
     [user.id, user.email, token, utcPlusHours(RESET_TTL_HOURS), nowUtc()],
   );
-  res.json({ ok: true, token, user: sanitizeUser(user) });
+  res.json({ ok: true, token, user: sanitizeUser(user), expiresAt: utcPlusHours(RESET_TTL_HOURS) });
+}));
+
+// Openstaande resets voor het admin-paneel.
+router.get('/auth/resets', requireAdmin, wrap(async (req, res) => {
+  await pool.query('DELETE FROM password_resets WHERE expires_at <= UTC_TIMESTAMP()');
+  const [rows] = await pool.query('SELECT email, token, expires_at, created_at FROM password_resets ORDER BY created_at DESC');
+  res.json({
+    ok: true,
+    data: rows.map((r) => ({ email: r.email, token: r.token, expiresAt: r.expires_at, createdAt: r.created_at })),
+  });
 }));
 
 router.post('/auth/reset/consume', wrap(async (req, res) => {

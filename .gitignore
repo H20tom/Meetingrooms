@@ -8,6 +8,8 @@ server/node_modules/
 server/.env
 *.pem
 *.key
+# Lokale notities met echte gegevens (wachtwoorden, SSH) — blijven op deze machine
+*.local.md
 
 # Logs
 *.log

@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex, nofollow" />
 <title>Meetingrooms H20 — Centraal Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -10,6 +11,13 @@
 <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
+
+<noscript>
+  <div style="max-width:520px;margin:48px auto;padding:24px;font-family:system-ui,sans-serif;text-align:center;">
+    <h1>JavaScript vereist</h1>
+    <p>Dit dashboard heeft JavaScript nodig. Schakel JavaScript in en herlaad de pagina.</p>
+  </div>
+</noscript>
 
 <main class="dashboard">
   <header class="dashboard__header">
@@ -121,6 +129,13 @@ if ('serviceWorker' in navigator) {
 (async function () {
   const me = await Auth.requireLogin();
   if (!me) return;
+  // Sessie verloopt mid-sessie → centrale 401 → terug naar login.
+  let redirecting = false;
+  window.addEventListener('h20:unauthorized', () => {
+    if (redirecting) return;
+    redirecting = true;
+    location.replace('login.html');
+  });
   document.getElementById('dashUser').textContent = `${me.name} (${me.role})`;
   if (await Auth.isAdmin()) document.getElementById('adminLink').style.display = '';
   document.getElementById('logoutBtn').addEventListener('click', async () => {
@@ -142,6 +157,26 @@ if ('serviceWorker' in navigator) {
   }
 
   function cardHTML(room, s, scheduledList) {
+    const isUnknown = s.status === 'unknown';
+    // Onbekende status (server onbereikbaar): toon neutraal, niet als 'beschikbaar' of 'bezet'.
+    if (isUnknown) {
+      return `
+        <article class="room-card" data-status="unknown" data-room="${room.id}">
+          <a class="room-card__open" href="tablet.html?room=${room.id}" title="Open tablet view" aria-label="Open tablet view">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+          </a>
+          <header class="room-card__head">
+            <div>
+              <h2 class="room-card__name">${escapeHtml(room.name)}</h2>
+              <div class="room-card__sub">${escapeHtml(room.subtitle)}</div>
+            </div>
+            <span class="room-card__badge">Onbekend</span>
+          </header>
+          <div class="room-card__status">Status onbekend</div>
+          <p class="room-card__detail">Kan de serverstatus nu niet ophalen. Probeer het zo opnieuw.</p>
+        </article>
+      `;
+    }
     const isAvail = s.status === 'available';
     const status = isAvail ? 'Beschikbaar' : 'Bezet';
 
@@ -223,15 +258,15 @@ if ('serviceWorker' in navigator) {
       const dayPrefix = day.getTime() === today.getTime() ? '' :
                         day.getTime() === today.getTime() + 86400000 ? 'morgen ' :
                         H20.fmtDateShort(s) + ' · ';
-      const who = m.name && m.email ? `${m.name} · ${m.email}`
-                 : m.name ? m.name
-                 : m.email ? m.email
+      const who = m.name && m.email ? `${escapeHtml(m.name)} · ${escapeHtml(m.email)}`
+                 : m.name ? escapeHtml(m.name)
+                 : m.email ? escapeHtml(m.email)
                  : '';
       return `
         <div class="schedule-item">
           <span class="schedule-item__time">${dayPrefix}${H20.fmtTime(s)}–${H20.fmtTime(e)}</span>
           <span>
-            <span class="schedule-item__title">${m.title ? m.title : 'Vergadering'}</span>
+            <span class="schedule-item__title">${m.title ? escapeHtml(m.title) : 'Vergadering'}</span>
             ${who ? `<span class="schedule-item__email">${who}</span>` : ''}
           </span>
           <button class="schedule-item__cancel" data-cancel="${m.id}" data-room="${roomId}" aria-label="Annuleren">×</button>
@@ -265,10 +300,11 @@ if ('serviceWorker' in navigator) {
       grid.innerHTML = data.map(({ room, s, scheduledList }) => {
         if (s.status === 'available') {
           avail++;
-        } else {
+        } else if (s.status === 'busy') {
           busy++;
           if (!soonest || s.busyUntil < soonest) soonest = s.busyUntil;
         }
+        // 'unknown' telt niet mee in beschikbaar/bezet.
         return cardHTML(room, s, scheduledList);
       }).join('');
 
