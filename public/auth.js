@@ -57,6 +57,14 @@ async function isAdmin() {
   return !!(u.email && u.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
 }
 
+// Mag de vergader-historie inzien/exporteren: admins én de H20-rol.
+async function canViewHistory() {
+  const u = await getCurrentUser();
+  if (!u) return false;
+  if (u.role === 'admin' || u.role === 'h20') return true;
+  return !!(u.email && u.email.toLowerCase() === ADMIN_EMAIL.toLowerCase());
+}
+
 // ---------- gebruikersbeheer ----------
 async function listUsers() {
   const r = await api('/users');
@@ -188,15 +196,23 @@ async function requireAdmin(redirectTo = 'dashboard.html') {
   return u;
 }
 
+// Toegang tot het beheer-paneel voor historie: admin of H20-rol.
+async function requireHistoryAccess(redirectTo = 'dashboard.html') {
+  const u = await requireLogin();
+  if (!u) return null;
+  if (u.role !== 'admin' && u.role !== 'h20') { location.replace(redirectTo); return null; }
+  return u;
+}
+
 window.Auth = {
   ADMIN_EMAIL, SESSION_TTL_DAYS,
   ensureSeed,
   login, logout,
-  getCurrentUser, isAdmin,
+  getCurrentUser, isAdmin, canViewHistory,
   listUsers, addUser, updateUser, removeUser,
   setUserPin, clearUserPin, verifyUserPin, listUsersForQuickPick,
   requestPasswordReset, resetPasswordWithToken, listPendingResets,
   createInvite, getInvite, consumeInvite, listInvites, revokeInvite, buildInviteMailto,
   createPinSetupLink, consumePinSetup,
-  requireLogin, requireAdmin,
+  requireLogin, requireAdmin, requireHistoryAccess,
 };

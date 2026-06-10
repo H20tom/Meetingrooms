@@ -35,6 +35,10 @@ function isValidEmail(s) {
 function normEmail(s) {
   return String(s || '').trim().toLowerCase();
 }
+// Geldige rollen; alles wat onbekend is valt terug op 'user'.
+function normRole(role) {
+  return role === 'admin' || role === 'h20' ? role : 'user';
+}
 function newUserId() {
   return 'u-' + randomToken(6);
 }
@@ -119,7 +123,7 @@ router.post('/users', requireAdmin, wrap(async (req, res) => {
   const hash = await hashPassword(password);
   await pool.execute(
     'INSERT INTO users (id, email, name, role, password_hash, created_at, invited_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [id, String(email).trim(), String(name).trim(), role === 'admin' ? 'admin' : 'user', hash, nowUtc(), req.user.email],
+    [id, String(email).trim(), String(name).trim(), normRole(role), hash, nowUtc(), req.user.email],
   );
   res.json({ ok: true, user: sanitizeUser(await findUserById(id)) });
 }));
@@ -137,7 +141,7 @@ router.patch('/users/:id', requireAdmin, wrap(async (req, res) => {
     if (dup && dup.id !== target.id) return res.json({ ok: false, reason: 'duplicate-email' });
     sets.push('email = ?'); params.push(String(patch.email).trim());
   }
-  if (patch.role === 'admin' || patch.role === 'user') { sets.push('role = ?'); params.push(patch.role); }
+  if (patch.role === 'admin' || patch.role === 'user' || patch.role === 'h20') { sets.push('role = ?'); params.push(patch.role); }
   if (patch.password) { sets.push('password_hash = ?'); params.push(await hashPassword(patch.password)); }
   if (!sets.length) return res.json({ ok: true, user: sanitizeUser(target) });
   params.push(target.id);
@@ -223,7 +227,7 @@ router.post('/invites', requireAdmin, wrap(async (req, res) => {
   const token = randomToken(24);
   await pool.execute(
     'INSERT INTO invites (token, email, name, role, invited_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    [token, String(email).trim(), String(name).trim(), role === 'admin' ? 'admin' : 'user', req.user.email, nowUtc(), utcPlusDays(INVITE_TTL_DAYS)],
+    [token, String(email).trim(), String(name).trim(), normRole(role), req.user.email, nowUtc(), utcPlusDays(INVITE_TTL_DAYS)],
   );
   const [rows] = await pool.execute('SELECT * FROM invites WHERE token = ?', [token]);
   res.json({ ok: true, invite: serializeInvite(rows[0]) });

@@ -36,7 +36,7 @@
   </header>
 
   <!-- USERS -->
-  <section class="admin__panel">
+  <section class="admin__panel" id="panelUsers">
     <div class="admin__panel-head">
       <h2>Gebruikers</h2>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -55,7 +55,7 @@
   </section>
 
   <!-- INVITES -->
-  <section class="admin__panel">
+  <section class="admin__panel" id="panelInvites">
     <div class="admin__panel-head">
       <h2>Openstaande uitnodigingen</h2>
     </div>
@@ -107,7 +107,7 @@
   </section>
 
   <!-- PENDING RESETS -->
-  <section class="admin__panel">
+  <section class="admin__panel" id="panelResets">
     <div class="admin__panel-head">
       <h2>Openstaande wachtwoord-resets</h2>
     </div>
@@ -121,7 +121,7 @@
   </section>
 
   <!-- KIOSK -->
-  <section class="admin__panel">
+  <section class="admin__panel" id="panelKiosk">
     <div class="admin__panel-head"><h2>Kiosk-bescherming (tablets)</h2></div>
     <div class="admin__grid">
       <label class="field">
@@ -188,6 +188,7 @@
         <label for="invRole">Rol</label>
         <select id="invRole">
           <option value="user">Gebruiker</option>
+          <option value="h20">H20 (historie inzien)</option>
           <option value="admin">Admin</option>
         </select>
       </div>
@@ -217,6 +218,7 @@
         <label for="uRole">Rol</label>
         <select id="uRole">
           <option value="user">Gebruiker</option>
+          <option value="h20">H20 (historie inzien)</option>
           <option value="admin">Admin</option>
         </select>
       </div>
@@ -237,7 +239,7 @@
 <script src="kiosk.js?v=2"></script>
 <script>
 (async function () {
-  const me = await Auth.requireAdmin();
+  const me = await Auth.requireHistoryAccess();
   if (!me) return;
   // Sessie verloopt mid-sessie → centrale 401 → terug naar login.
   let redirecting = false;
@@ -247,6 +249,18 @@
     location.replace('login.html');
   });
   document.getElementById('adminMe').textContent = `${me.name} (${me.email})`;
+
+  // H20-rol = alleen-lezen historie. Verberg alle beheer-panelen behalve historie,
+  // plus de "Wissen"-knop (wissen blijft admin-only).
+  const isAdmin = me.role === 'admin';
+  if (!isAdmin) {
+    ['panelUsers', 'panelInvites', 'panelResets', 'panelKiosk'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = 'none';
+    });
+    const clearBtn = document.getElementById('historyClear');
+    if (clearBtn) clearBtn.style.display = 'none';
+  }
 
   document.getElementById('logoutBtn').addEventListener('click', async () => {
     await Auth.logout();
@@ -718,10 +732,12 @@ H20 Esports Campus`;
     H20.toast({ type: 'success', message: 'Kiosk-instellingen opgeslagen.' });
   });
 
-  // initial render
-  renderUsers();
-  renderResets();
-  renderInvites();
+  // initial render — admin-only panelen alleen voor admins ophalen (403 vermijden).
+  if (isAdmin) {
+    renderUsers();
+    renderResets();
+    renderInvites();
+  }
   renderHistory();
 })().catch((e) => console.error('admin init failed', e));
 </script>

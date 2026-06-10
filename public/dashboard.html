@@ -137,7 +137,7 @@ if ('serviceWorker' in navigator) {
     location.replace('login.html');
   });
   document.getElementById('dashUser').textContent = `${me.name} (${me.role})`;
-  if (await Auth.isAdmin()) document.getElementById('adminLink').style.display = '';
+  if (await Auth.canViewHistory()) document.getElementById('adminLink').style.display = '';
   document.getElementById('logoutBtn').addEventListener('click', async () => {
     await Auth.logout();
     location.replace('login.html');

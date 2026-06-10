@@ -88,6 +88,16 @@ async function requireAdmin(req, res, next) {
   });
 }
 
+// Historie inzien/exporteren mag voor admins én de H20-rol (alleen-lezen).
+async function requireHistoryViewer(req, res, next) {
+  return requireAuth(req, res, () => {
+    if (req.user.role !== 'admin' && req.user.role !== 'h20') {
+      return res.status(403).json({ ok: false, reason: 'forbidden' });
+    }
+    next();
+  });
+}
+
 module.exports = {
   SESSION_TTL_DAYS,
   COOKIE_NAME,
@@ -102,4 +112,5 @@ module.exports = {
   userFromToken,
   requireAuth,
   requireAdmin,
+  requireHistoryViewer,
 };

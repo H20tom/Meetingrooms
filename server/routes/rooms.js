@@ -5,7 +5,7 @@
 
 const express = require('express');
 const { pool } = require('../db');
-const { requireAuth, requireAdmin } = require('../lib/auth');
+const { requireAuth, requireAdmin, requireHistoryViewer } = require('../lib/auth');
 
 const router = express.Router();
 
@@ -254,8 +254,8 @@ router.delete('/rooms/:id/scheduled/:mid', wrap(async (req, res) => {
   res.json({ ok: r.affectedRows > 0 });
 }));
 
-// Historie bekijken/wissen — alleen voor ingelogde gebruikers/admins.
-router.get('/history', requireAuth, wrap(async (req, res) => {
+// Historie bekijken/wissen — inzien mag voor admins én de H20-rol; wissen alleen admin.
+router.get('/history', requireHistoryViewer, wrap(async (req, res) => {
   const { roomId = null, from = null, to = null } = req.query;
   const clauses = [];
   const params = [];
