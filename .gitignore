@@ -28,3 +28,6 @@ public/.php-version
 # Behoud wel de voorbeeld-config
 !.env.example
 !server/.env.example
+
+# Deploy-logboeken (lokaal)
+deploy-logboek/*.log

@@ -8,6 +8,39 @@ Laatst bijgewerkt: 2026-06-10
 
 ---
 
+## 0. Deployen met deploy.sh (aanbevolen)
+
+Zelfde bediening als de receptie-app:
+
+```bash
+bash deploy.sh --controle    # laat zien wat er zou gebeuren, wijzigt niets
+bash deploy.sh --deploy      # voert het echt uit
+```
+
+Het script doet achtereenvolgens: lokale syntaxcontrole van alle JS en van de
+inline scripts in de pagina's, controleren of de server en `server/.env`
+bereikbaar zijn, een rsync-proefrun met de lijst te versturen bestanden, een
+reservekopie als tar op de server, het versturen zelf, `npm install` als
+`package.json` wijzigde, `migrate.js` als `schema.sql` wijzigde, een herstart
+via `tmp/restart.txt`, en tot slot een controle op `/healthz` plus de drie
+schermen. Faalt die controle, dan rolt het script zelf terug naar de
+reservekopie.
+
+Wat er bewust NIET meegaat: `server/.env`, `node_modules`, `dev-local.js`,
+documentatie en de sjablonen in `sheet-templates/`.
+
+Logboek per deploy komt in `deploy-logboek/`.
+
+Terugzetten met de hand kan altijd nog:
+
+```bash
+ssh <user>@<host> 'cd ~/meetings.h20.gg && tar xzf backups/deploy-<stempel>/vorige-versie.tar.gz && touch tmp/restart.txt'
+```
+
+De handmatige procedure hieronder blijft geldig als achtervang.
+
+---
+
 ## 1. Architectuur (kort)
 
 - **Frontend:** vanilla HTML/CSS/JS in `public/` (`index.html`, `login.html`,
