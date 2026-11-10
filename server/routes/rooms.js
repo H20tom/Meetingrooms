@@ -27,6 +27,60 @@ function isValidEmail(s) {
   return typeof s === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim());
 }
 
+const MAX_TITLE_LEN = 120;
+
+// Een vergadering duurt nooit langer dan een etmaal. Zonder bovengrens werd
+// durationMin: 99999999 klakkeloos geaccepteerd en stond de ruimte tot het
+// jaar 2216 op bezet — alleen nog met de hand uit de database te halen.
+const MIN_DURATION_MIN = 5;
+const MAX_DURATION_MIN = 24 * 60;
+// Verder dan een jaar vooruit plannen is vrijwel altijd een typefout in het jaartal.
+const MAX_SCHEDULE_AHEAD_DAYS = 366;
+
+// Accepteert alleen een echt geheel getal binnen het bereik. `Number('30abc')`
+// geeft NaN en `'30' >= 5` is true in JS — vandaar expliciet valideren.
+function parseDuration(raw, { min = MIN_DURATION_MIN, max = MAX_DURATION_MIN } = {}) {
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(n) || !Number.isInteger(n)) return null;
+  if (n < min || n > max) return null;
+  return n;
+}
+
+// Meeting-titels belanden op de tablet, het dashboard en in de export. De
+// frontend escapet ze, maar dit is de tweede laag: geen hoeken, geen
+// control-characters, begrensde lengte.
+function cleanTitle(raw) {
+  if (raw === null || raw === undefined) return null;
+  const s = String(raw)
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .replace(/[<>]/g, '')
+    .trim()
+    .slice(0, MAX_TITLE_LEN);
+  return s || null;
+}
+
+// De tablet-quickpick geeft bewust geen e-mailadressen meer prijs (die lekten
+// naar het open internet). In plaats daarvan stuurt de tablet een userId en
+// zoekt de server het adres zelf op. Een meegestuurd e-mailadres wordt dan
+// genegeerd, zodat je niet op naam van een ander kunt boeken.
+async function resolveBooker({ userId, email, name }) {
+  if (userId) {
+    const [rows] = await pool.execute(
+      'SELECT email, name FROM users WHERE id = ? LIMIT 1',
+      [String(userId)],
+    );
+    if (!rows.length) return { ok: false, reason: 'unknown-user' };
+    return { ok: true, email: rows[0].email, name: rows[0].name };
+  }
+  if (!isValidEmail(email)) return { ok: false, reason: 'invalid-email' };
+  return {
+    ok: true,
+    email: email.trim(),
+    name: name ? String(name).trim().slice(0, 120) : null,
+  };
+}
+
 // ---------- queries ----------
 async function getActive(roomId) {
   const [rows] = await pool.execute('SELECT * FROM active_meetings WHERE room_id = ?', [roomId]);
@@ -43,8 +97,8 @@ async function getScheduledRows(roomId, conn = pool) {
   return rows;
 }
 
-async function nextScheduledAfter(roomId, time) {
-  const rows = await getScheduledRows(roomId);
+async function nextScheduledAfter(roomId, time, conn = pool) {
+  const rows = await getScheduledRows(roomId, conn);
   const t = new Date(time);
   return rows.find((m) => fromDb(m.start_at) >= t) || null;
 }
@@ -126,9 +180,9 @@ function serializeScheduled(rows) {
 }
 
 // ---------- conflict-checks (geporteerd uit app.js) ----------
-async function canStart(roomId, durationMin, now = new Date()) {
+async function canStart(roomId, durationMin, now = new Date(), conn = pool) {
   const proposedEnd = new Date(now.getTime() + durationMin * 60000);
-  const next = await nextScheduledAfter(roomId, now);
+  const next = await nextScheduledAfter(roomId, now, conn);
   if (!next) return { ok: true, maxMinutes: null };
   const nextStart = fromDb(next.start_at);
   if (proposedEnd <= nextStart) return { ok: true, maxMinutes: minutesBetween(now, nextStart) };
@@ -150,7 +204,16 @@ async function canExtend(roomId, addMin) {
 async function canSchedule(roomId, startAt, endAt) {
   const start = new Date(startAt);
   const end = new Date(endAt);
+  if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime())) {
+    return { ok: false, reason: 'invalid-range', message: 'Ongeldige datum of tijd.' };
+  }
   if (end <= start) return { ok: false, reason: 'invalid-range', message: 'Eindtijd moet na starttijd liggen.' };
+  if ((end - start) / 60000 > MAX_DURATION_MIN) {
+    return { ok: false, reason: 'too-long', message: 'Een reservering duurt maximaal 24 uur.' };
+  }
+  if (start.getTime() - Date.now() > MAX_SCHEDULE_AHEAD_DAYS * 86400000) {
+    return { ok: false, reason: 'too-far-ahead', message: 'Niet verder dan een jaar vooruit plannen.' };
+  }
   if (start < new Date()) return { ok: false, reason: 'past', message: 'Starttijd ligt in het verleden.' };
 
   const active = await getActive(roomId);
@@ -192,26 +255,73 @@ router.get('/rooms/:id/scheduled', wrap(async (req, res) => {
 
 router.post('/rooms/:id/start', wrap(async (req, res) => {
   const roomId = req.params.id;
-  const { durationMin, title = null, email = null, name = null, showTitleOnScreen = false } = req.body || {};
-  if (!isValidEmail(email)) return res.json({ ok: false, reason: 'invalid-email' });
-  if (!(durationMin >= 5)) return res.json({ ok: false, reason: 'invalid-duration' });
-  const check = await canStart(roomId, durationMin);
-  if (!check.ok) return res.json({ ok: false, ...check });
-  const now = new Date();
-  const until = new Date(now.getTime() + durationMin * 60000);
-  await pool.execute('DELETE FROM active_meetings WHERE room_id = ?', [roomId]);
-  await pool.execute(
-    `INSERT INTO active_meetings
-       (room_id, session_id, started_at, busy_until, title, email, name, show_title_on_screen)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [roomId, uuid(), toDb(now), toDb(until), title, email.trim(), name ? String(name).trim() : null, showTitleOnScreen && title ? 1 : 0],
-  );
-  res.json({ ok: true });
+  const { durationMin, title = null, email = null, name = null, userId = null, showTitleOnScreen = false } = req.body || {};
+  const booker = await resolveBooker({ userId, email, name });
+  if (!booker.ok) return res.json({ ok: false, reason: booker.reason });
+  const minutes = parseDuration(durationMin);
+  if (minutes === null) return res.json({ ok: false, reason: 'invalid-duration' });
+  const safeTitle = cleanTitle(title);
+
+  // De hele start loopt in één transactie met een rij-lock op de ruimte.
+  // Zonder die lock konden twee gelijktijdige verzoeken allebei langs de
+  // conflictcontrole komen en elkaars boeking overschrijven; in een test
+  // slaagden 6 van de 8 parallelle starts en verdwenen 5 boekingen spoorloos.
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
+
+    const [roomRows] = await conn.execute('SELECT id FROM rooms WHERE id = ? FOR UPDATE', [roomId]);
+    if (!roomRows.length) {
+      await conn.rollback();
+      return res.json({ ok: false, reason: 'unknown-room' });
+    }
+
+    // Een bezette ruimte werd eerder stilzwijgend overschreven: de lopende
+    // vergadering verdween uit active_meetings zonder ooit in meeting_history
+    // te belanden. Nu weigeren we, en geeft de client de actuele status terug.
+    const [activeRows] = await conn.execute(
+      'SELECT * FROM active_meetings WHERE room_id = ? AND busy_until > UTC_TIMESTAMP()',
+      [roomId],
+    );
+    if (activeRows.length) {
+      await conn.rollback();
+      const a = activeRows[0];
+      return res.json({
+        ok: false,
+        reason: 'already-busy',
+        busyUntil: fromDb(a.busy_until).toISOString(),
+      });
+    }
+
+    const check = await canStart(roomId, minutes, new Date(), conn);
+    if (!check.ok) {
+      await conn.rollback();
+      return res.json({ ok: false, ...check });
+    }
+
+    const now = new Date();
+    const until = new Date(now.getTime() + minutes * 60000);
+    await conn.execute('DELETE FROM active_meetings WHERE room_id = ?', [roomId]);
+    await conn.execute(
+      `INSERT INTO active_meetings
+         (room_id, session_id, started_at, busy_until, title, email, name, show_title_on_screen)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [roomId, uuid(), toDb(now), toDb(until), safeTitle, booker.email, booker.name, showTitleOnScreen && safeTitle ? 1 : 0],
+    );
+    await conn.commit();
+    res.json({ ok: true });
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 }));
 
 router.post('/rooms/:id/extend', wrap(async (req, res) => {
   const roomId = req.params.id;
-  const addMin = Number((req.body || {}).addMin);
+  const addMin = parseDuration((req.body || {}).addMin);
+  if (addMin === null) return res.json({ ok: false, reason: 'invalid-duration' });
   const check = await canExtend(roomId, addMin);
   if (!check.ok) return res.json({ ok: false, ...check });
   const active = await getActive(roomId);
@@ -231,8 +341,10 @@ router.post('/rooms/:id/end', wrap(async (req, res) => {
 
 router.post('/rooms/:id/schedule', wrap(async (req, res) => {
   const roomId = req.params.id;
-  const { startAt, endAt, title = null, email = null, name = null, showTitleOnScreen = false } = req.body || {};
-  if (!isValidEmail(email)) return res.json({ ok: false, reason: 'invalid-email' });
+  const { startAt, endAt, title = null, email = null, name = null, userId = null, showTitleOnScreen = false } = req.body || {};
+  const booker = await resolveBooker({ userId, email, name });
+  if (!booker.ok) return res.json({ ok: false, reason: booker.reason });
+  const safeTitle = cleanTitle(title);
   const check = await canSchedule(roomId, startAt, endAt);
   if (!check.ok) return res.json({ ok: false, ...check });
   const id = uuid();
@@ -240,7 +352,7 @@ router.post('/rooms/:id/schedule', wrap(async (req, res) => {
     `INSERT INTO scheduled_meetings
        (id, room_id, start_at, end_at, title, email, name, show_title_on_screen, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [id, roomId, toDb(startAt), toDb(endAt), title, email.trim(), name ? String(name).trim() : null, showTitleOnScreen && title ? 1 : 0, toDb(new Date())],
+    [id, roomId, toDb(startAt), toDb(endAt), safeTitle, booker.email, booker.name, showTitleOnScreen && safeTitle ? 1 : 0, toDb(new Date())],
   );
   const [rows] = await pool.execute('SELECT * FROM scheduled_meetings WHERE id = ?', [id]);
   res.json({ ok: true, meeting: serializeScheduled(rows)[0] });

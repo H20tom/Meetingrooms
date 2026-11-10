@@ -144,21 +144,28 @@ button {
   z-index: 2;
 }
 
+/* De ruimtenaam is de primaire identificatie op afstand: wie door de gang
+   loopt wil éérst weten wélke ruimte dit is, pas daarna de status. Daarom
+   staat de naam groot en is de statusregel een maat kleiner dan voorheen
+   (was clamp(72px, 11vw, 180px)) — nog steeds leesbaar vanaf ~5 meter. */
 .tablet__room-name {
-  font-size: clamp(20px, 2.4vw, 28px);
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: clamp(34px, 5vw, 76px);
+  font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.32em;
-  color: rgba(255,255,255,0.85);
-  margin-bottom: clamp(16px, 2vw, 28px);
+  letter-spacing: 0.14em;
+  line-height: 1.02;
+  color: #fff;
+  margin-bottom: clamp(12px, 1.6vw, 22px);
+  text-shadow: 0 6px 32px rgba(0,0,0,0.25);
 }
 .tablet__status-text {
   font-family: var(--font-display);
-  font-size: clamp(72px, 11vw, 180px);
-  font-weight: 800;
-  line-height: 0.95;
-  letter-spacing: -0.04em;
-  color: #fff;
+  font-size: clamp(48px, 7vw, 112px);
+  font-weight: 700;
+  line-height: 0.98;
+  letter-spacing: -0.03em;
+  color: rgba(255,255,255,0.92);
   margin: 0 0 clamp(16px, 2vw, 28px);
   text-shadow: 0 8px 40px rgba(0,0,0,0.25);
 }

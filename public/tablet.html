@@ -456,7 +456,7 @@ syncOnlineFlag();
           busyTitleEl.textContent = '';
           busyTitleEl.style.display = 'none';
         }
-        const titleSuffix = (!showBigTitle && s.title) ? ` · ${s.title}` : '';
+        const titleSuffix = (!showBigTitle && s.title) ? ` · ${H20.escapeHtml(s.title)}` : "";
         statusText.textContent = `Bezet tot ${H20.fmtTime(s.busyUntil)}`;
         const mins = s.minutesLeft;
         const human = mins >= 60
@@ -530,7 +530,7 @@ syncOnlineFlag();
       H20.toast({
         type: 'error',
         title: 'Niet mogelijk om te starten',
-        message: `Hey, dit is niet mogelijk omdat om <strong>${H20.fmtTime(new Date(next.startAt))}</strong> een geplande meeting${next.title ? ` (${next.title})` : ''} begint. Maximaal <strong>${max} ${max === 1 ? 'minuut' : 'minuten'}</strong> beschikbaar tot dan.`,
+        message: `Hey, dit is niet mogelijk omdat om <strong>${H20.fmtTime(new Date(next.startAt))}</strong> een geplande meeting${next.title ? ` (${H20.escapeHtml(next.title)})` : ""} begint. Maximaal <strong>${max} ${max === 1 ? 'minuut' : 'minuten'}</strong> beschikbaar tot dan.`,
         action: max >= 5 ? {
           label: `Wel ${max} min starten`,
           onClick: async () => {
@@ -560,7 +560,7 @@ syncOnlineFlag();
       H20.toast({
         type: 'error',
         title: 'Niet mogelijk om te starten',
-        message: `Hey, dit is niet mogelijk omdat om <strong>${H20.fmtTime(new Date(next.startAt))}</strong> een geplande meeting${next.title ? ` (${next.title})` : ''} begint. Maximaal <strong>${check.maxMinutes} min</strong> beschikbaar.`,
+        message: `Hey, dit is niet mogelijk omdat om <strong>${H20.fmtTime(new Date(next.startAt))}</strong> een geplande meeting${next.title ? ` (${H20.escapeHtml(next.title)})` : ""} begint. Maximaal <strong>${check.maxMinutes} min</strong> beschikbaar.`,
         action: check.maxMinutes >= 5 ? {
           label: `Wel ${check.maxMinutes} min starten`,
           onClick: () => openReserveModal(check.maxMinutes),
@@ -583,7 +583,7 @@ syncOnlineFlag();
       H20.toast({
         type: 'error',
         title: 'Niet mogelijk om te verlengen',
-        message: `Hey, dit is niet mogelijk omdat om <strong>${H20.fmtTime(new Date(next.startAt))}</strong> een geplande meeting${next.title ? ` (${next.title})` : ''} begint. Je kunt maximaal <strong>+${max} ${max === 1 ? 'minuut' : 'minuten'}</strong> verlengen.`,
+        message: `Hey, dit is niet mogelijk omdat om <strong>${H20.fmtTime(new Date(next.startAt))}</strong> een geplande meeting${next.title ? ` (${H20.escapeHtml(next.title)})` : ""} begint. Je kunt maximaal <strong>+${max} ${max === 1 ? 'minuut' : 'minuten'}</strong> verlengen.`,
         action: max >= 5 ? {
           label: `Wel +${max} min verlengen`,
           onClick: async () => {
@@ -930,13 +930,13 @@ syncOnlineFlag();
         msg = `Hey, dit is niet mogelijk omdat er nu al een meeting loopt tot ${H20.fmtTime(new Date(result.conflictWith.endAt))}.`;
       } else if (result.reason === 'overlap-scheduled' && result.conflictWith) {
         const c = result.conflictWith;
-        msg = `Hey, dit overlapt met een bestaande geplande meeting${c.title ? ` (${c.title})` : ''} van ${H20.fmtTime(new Date(c.startAt))} tot ${H20.fmtTime(new Date(c.endAt))}.`;
+        msg = `Hey, dit overlapt met een bestaande geplande meeting${c.title ? ` (${H20.escapeHtml(c.title)})` : ""} van ${H20.fmtTime(new Date(c.startAt))} tot ${H20.fmtTime(new Date(c.endAt))}.`;
       }
       H20.toast({ type: 'error', title: 'Inplannen niet mogelijk', message: msg });
       return;
     }
     planModal.style.display = 'none';
-    H20.toast({ type: 'info', title: 'Ingepland', message: `${room.name} · ${planDate.value} om ${planStart.value} (${durMin} min) — ${email}.` });
+    H20.toast({ type: 'info', title: 'Ingepland', message: `${H20.escapeHtml(room.name)} · ${H20.escapeHtml(planDate.value)} om ${H20.escapeHtml(planStart.value)} (${durMin} min) — ${H20.escapeHtml(email)}.` });
     render();
   });
 
@@ -947,20 +947,22 @@ syncOnlineFlag();
     const users = await Auth.listUsersForQuickPick();
     if (!users.length) { if (block) block.style.display = 'none'; return; }
     if (block) block.style.display = '';
+    // Geen e-mailadressen in de DOM: de quickpick levert ze niet meer en de
+    // server zoekt het adres zelf op aan de hand van het userId.
     gridEl.innerHTML = users.map((u) => `
-      <button type="button" class="user-tile" data-uid="${H20.escapeHtml(u.id)}" data-uname="${H20.escapeHtml(u.name)}" data-uemail="${H20.escapeHtml(u.email)}" data-haspin="${u.hasPin ? '1' : '0'}">
+      <button type="button" class="user-tile" data-uid="${H20.escapeHtml(u.id)}" data-uname="${H20.escapeHtml(u.name)}" data-haspin="${u.hasPin ? '1' : '0'}">
         <span class="user-tile__initial">${H20.escapeHtml(String(u.name || '').charAt(0).toUpperCase())}</span>
         ${H20.escapeHtml(u.name)}
       </button>`).join('');
     gridEl.onclick = (e) => {
       const tile = e.target.closest('.user-tile');
       if (!tile) return;
-      const uid = tile.dataset.uid, uname = tile.dataset.uname, uemail = tile.dataset.uemail;
+      const uid = tile.dataset.uid, uname = tile.dataset.uname;
       // Users WE created with a PIN must verify it; created users without a PIN book directly.
       if (tile.dataset.haspin === '1') {
-        openPinModal(uid, uname, uemail, context);
+        openPinModal(uid, uname, context);
       } else {
-        bookForUser(uemail, uname, context);
+        bookForUser({ userId: uid, name: uname }, context);
       }
     };
   }
@@ -969,13 +971,11 @@ syncOnlineFlag();
   // before booking — otherwise typing the e-mail would bypass the pincode.
   async function pinRequiredForEmail(email, context) {
     if (typeof Auth === 'undefined') return false;
-    const target = (email || '').trim().toLowerCase();
+    const target = (email || '').trim();
     if (!target) return false;
-    const match = (await Auth.listUsersForQuickPick()).find(
-      (u) => u.email && u.email.toLowerCase() === target && u.hasPin
-    );
-    if (!match) return false;
-    openPinModal(match.id, match.name, match.email, context);
+    const r = await Auth.pinRequiredForEmail(target);
+    if (!r.required) return false;
+    openPinModal(r.userId, r.name, context);
     return true;
   }
 
@@ -984,7 +984,7 @@ syncOnlineFlag();
   const pinError = document.getElementById('pinError');
   const pinModalTitle = document.getElementById('pinModalTitle');
   const pinModalSub = document.getElementById('pinModalSub');
-  let pinState = { userId: null, userName: null, userEmail: null, context: null };
+  let pinState = { userId: null, userName: null, context: null };
 
   // Brute-force-rem: na 5 foute pogingen 30s blokkeren (per gebruiker, client-side).
   const PIN_MAX_ATTEMPTS = 5;
@@ -994,8 +994,8 @@ syncOnlineFlag();
     return pinLock[userId] || (pinLock[userId] = { fails: 0, lockedUntil: 0 });
   }
 
-  function openPinModal(userId, userName, userEmail, context) {
-    pinState = { userId, userName, userEmail, context };
+  function openPinModal(userId, userName, context) {
+    pinState = { userId, userName, context };
     pinModalTitle.textContent = `Hoi ${userName}!`;
     pinModalSub.textContent = 'Voer je pincode in om de vergadering te starten.';
     pinInput.value = '';
@@ -1042,25 +1042,27 @@ syncOnlineFlag();
     // Succes: reset de teller voor deze gebruiker.
     lock.fails = 0;
     lock.lockedUntil = 0;
-    const email = result.user.email;
     const name = result.user.name;
     pinModal.style.display = 'none';
     pinError.textContent = '';
-    bookForUser(email, name, pinState.context);
+    bookForUser({ userId: pinState.userId, name }, pinState.context);
   });
 
   // Shared booking flow for a selected/verified user (PIN-verified or PIN-less created user).
-  async function bookForUser(email, name, context) {
+  // `booker` is of { userId, name } (quickpick/PIN — server zoekt het adres op)
+  // of { email, name } (handmatig getypt adres).
+  async function bookForUser(booker, context) {
+    const { userId = null, email = null, name = null } = booker || {};
     if (context === 'reserve') {
       const rTitle = document.getElementById('reserveTitleInput').value.trim() || null;
       const rShow = document.getElementById('reserveShowTitle').checked;
-      const r = await H20.startMeeting(roomId, reservePendingMin, { email, name, title: rTitle, showTitleOnScreen: rShow });
+      const r = await H20.startMeeting(roomId, reservePendingMin, { userId, email, name, title: rTitle, showTitleOnScreen: rShow });
       if (!r.ok && r.conflictWith) {
         const max = r.maxMinutes;
         H20.toast({
           type: 'error', title: 'Niet mogelijk om te starten',
           message: `Om <strong>${H20.fmtTime(new Date(r.conflictWith.startAt))}</strong> begint een geplande meeting. Max <strong>${max} min</strong> beschikbaar.`,
-          action: max >= 5 ? { label: `Wel ${max} min starten`, onClick: async () => { const r2 = await H20.startMeeting(roomId, max, { email, name, title: rTitle, showTitleOnScreen: rShow }); if (r2.ok) { reserveModal.style.display = 'none'; render(); } } } : null,
+          action: max >= 5 ? { label: `Wel ${max} min starten`, onClick: async () => { const r2 = await H20.startMeeting(roomId, max, { userId, email, name, title: rTitle, showTitleOnScreen: rShow }); if (r2.ok) { reserveModal.style.display = 'none'; render(); } } } : null,
         });
         return;
       }
@@ -1075,7 +1077,7 @@ syncOnlineFlag();
       if (!m || m < 5) { H20.toast({ type: 'warn', message: 'Selecteer eerst een duur.' }); return; }
       const cTitle = document.getElementById('customTitleInput').value.trim() || null;
       const cShow = document.getElementById('customShowTitle').checked;
-      const r = await H20.startMeeting(roomId, m, { email, name, title: cTitle, showTitleOnScreen: cShow });
+      const r = await H20.startMeeting(roomId, m, { userId, email, name, title: cTitle, showTitleOnScreen: cShow });
       if (!r.ok && r.conflictWith) {
         H20.toast({
           type: 'error', title: 'Niet mogelijk',
@@ -1100,19 +1102,19 @@ syncOnlineFlag();
       }
       const { startAt, endAt, durMin } = times;
       const pShow = document.getElementById('planShowTitle').checked;
-      const r = await H20.scheduleMeeting(roomId, { startAt, endAt, title: planTitleInput.value.trim() || null, email, name, showTitleOnScreen: pShow });
+      const r = await H20.scheduleMeeting(roomId, { startAt, endAt, title: planTitleInput.value.trim() || null, userId, email, name, showTitleOnScreen: pShow });
       if (!r.ok) {
         let msg = 'Tijdslot bezet.';
         if (r.reason === 'past') msg = 'Dat tijdstip ligt in het verleden.';
         else if (r.reason === 'overlap-current' && r.conflictWith) msg = `Er loopt al een meeting tot ${H20.fmtTime(new Date(r.conflictWith.endAt))}.`;
         else if (r.reason === 'overlap-scheduled' && r.conflictWith) {
           const c = r.conflictWith;
-          msg = `Overlapt met een geplande meeting${c.title ? ` (${c.title})` : ''} van ${H20.fmtTime(new Date(c.startAt))} tot ${H20.fmtTime(new Date(c.endAt))}.`;
+          msg = `Overlapt met een geplande meeting${c.title ? ` (${H20.escapeHtml(c.title)})` : ""} van ${H20.fmtTime(new Date(c.startAt))} tot ${H20.fmtTime(new Date(c.endAt))}.`;
         }
         H20.toast({ type: 'error', title: 'Inplannen niet mogelijk', message: msg }); return;
       }
       planModal.style.display = 'none';
-      H20.toast({ type: 'info', title: 'Ingepland', message: `${room.name} · ${planDate.value} om ${planStart.value} (${durMin} min) — ${name}.` });
+      H20.toast({ type: 'info', title: 'Ingepland', message: `${H20.escapeHtml(room.name)} · ${H20.escapeHtml(planDate.value)} om ${H20.escapeHtml(planStart.value)} (${durMin} min) — ${H20.escapeHtml(name)}.` });
       render();
     }
   }

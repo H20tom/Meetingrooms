@@ -44,7 +44,7 @@
 
   <section class="dashboard__title">
     <h1>Status van alle ruimtes</h1>
-    <p>Realtime overzicht van Raboroom, Aquarium en Bundled.</p>
+    <p>Realtime overzicht van alle vier de meetingrooms.</p>
     <div class="dashboard__summary" id="summary">
       <span class="summary-pill"><span class="dot green"></span><strong id="availCount">0</strong> beschikbaar</span>
       <span class="summary-pill"><span class="dot red"></span><strong id="busyCount">0</strong> bezet</span>
@@ -362,7 +362,7 @@ if ('serviceWorker' in navigator) {
         H20.toast({
           type: 'error',
           title: 'Niet mogelijk om te verlengen',
-          message: `In ${room ? room.name : 'deze ruimte'} begint om <strong>${H20.fmtTime(new Date(next.startAt))}</strong> een geplande meeting${next.title ? ` (${next.title})` : ''}. Je kunt maximaal <strong>+${max} ${max === 1 ? 'minuut' : 'minuten'}</strong> verlengen.`,
+          message: `In ${room ? room.name : 'deze ruimte'} begint om <strong>${H20.fmtTime(new Date(next.startAt))}</strong> een geplande meeting${next.title ? ` (${H20.escapeHtml(next.title)})` : ""}. Je kunt maximaal <strong>+${max} ${max === 1 ? 'minuut' : 'minuten'}</strong> verlengen.`,
           action: max >= 5 ? {
             label: `Wel +${max} min verlengen`,
             onClick: async () => {
@@ -539,13 +539,13 @@ if ('serviceWorker' in navigator) {
         msg = `Er loopt al een meeting in ${room.name} tot ${H20.fmtTime(new Date(result.conflictWith.endAt))}.`;
       } else if (result.reason === 'overlap-scheduled' && result.conflictWith) {
         const c = result.conflictWith;
-        msg = `Overlapt met een bestaande geplande meeting${c.title ? ` (${c.title})` : ''} in ${room.name} van ${H20.fmtTime(new Date(c.startAt))} tot ${H20.fmtTime(new Date(c.endAt))}.`;
+        msg = `Overlapt met een bestaande geplande meeting${c.title ? ` (${H20.escapeHtml(c.title)})` : ""} in ${room.name} van ${H20.fmtTime(new Date(c.startAt))} tot ${H20.fmtTime(new Date(c.endAt))}.`;
       }
       H20.toast({ type: 'error', title: 'Inplannen niet mogelijk', message: msg });
       return;
     }
     planModal.style.display = 'none';
-    H20.toast({ type: 'success', title: 'Ingepland', message: `${room.name} · ${planDate.value} om ${planStart.value} (${durMin} min) — ${name}.` });
+    H20.toast({ type: 'success', title: 'Ingepland', message: `${H20.escapeHtml(room.name)} · ${H20.escapeHtml(planDate.value)} om ${H20.escapeHtml(planStart.value)} (${durMin} min) — ${H20.escapeHtml(name)}.` });
     await render();
   });
 

@@ -17,8 +17,53 @@ const origins = (process.env.CORS_ORIGIN || 'http://localhost:8765')
   .map((s) => s.trim())
   .filter(Boolean);
 
+// Achter Plesk/nginx staat precies een proxy. Zonder dit ziet Express elk
+// verzoek als afkomstig van 127.0.0.1 en zou de rate limiter alle gebruikers
+// op een hoop gooien. Bewust 1 en niet `true`, zodat de client-IP niet via een
+// zelf-opgegeven X-Forwarded-For te vervalsen is.
+app.set('trust proxy', 1);
+
+// Security-headers.
+//
+// Twee eerlijke kanttekeningen bij de CSP hieronder:
+//
+// 1. `script-src` heeft nog 'unsafe-inline' nodig omdat alle vijf de pagina's
+//    in public/ een inline <script>-blok bevatten. Zolang dat zo is, stopt de
+//    CSP geen XSS — de echte bescherming komt nu van het escapen in de code.
+//    Pas als die blokken naar losse .js-bestanden zijn verplaatst kan dit
+//    'self' worden en wordt de CSP een vangnet voor een gemiste escape.
+// 2. Op Plesk serveert nginx public/ rechtstreeks, dus deze header bereikt
+//    alleen /api-responses. Voor de HTML-pagina's moeten dezelfde headers in
+//    de nginx-config van de site staan. Zie DEPLOY.md.
+app.use((req, res, next) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+      "font-src 'self' https://fonts.gstatic.com",
+      "img-src 'self' data:",
+      "connect-src 'self'",
+      "frame-ancestors 'none'",
+      "object-src 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join('; '),
+  );
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // HSTS alleen sturen als we daadwerkelijk achter HTTPS draaien.
+  if (String(process.env.COOKIE_SECURE || '').toLowerCase() === 'true') {
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  }
+  next();
+});
+
 app.use(cors({ origin: origins, credentials: true }));
-app.use(express.json());
+app.use(express.json({ limit: '64kb' }));
 app.use(cookieParser());
 
 // Healthcheck: bevestigt dat de DB-verbinding leeft.
@@ -58,6 +103,10 @@ app.use((req, res) => res.status(404).json({ ok: false, reason: 'not-found' }));
 
 // Centrale error-handler — lekt geen stacktraces naar de client.
 app.use((err, req, res, next) => {
+  // express.json() gooit bij een te grote of ongeldige body; dat is een
+  // clientfout, geen serverfout, en hoort geen 500 op te leveren.
+  if (err && err.type === 'entity.too.large') return res.status(413).json({ ok: false, reason: 'payload-too-large' });
+  if (err && err.type === 'entity.parse.failed') return res.status(400).json({ ok: false, reason: 'invalid-json' });
   console.error('[error]', err);
   res.status(500).json({ ok: false, reason: 'server-error' });
 });

@@ -5,6 +5,7 @@
 // in self-contained base64-payloads. bcrypt vervangt de client-side SHA-256.
 
 const express = require('express');
+const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const { pool } = require('../db');
 const {
   COOKIE_NAME,
@@ -23,6 +24,34 @@ const {
 
 const router = express.Router();
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+// ---------- brute-force-remmen ----------
+// Zonder deze limieten is een 4-cijferige PIN (10.000 mogelijkheden) binnen
+// enkele minuten te raden, en zijn wachtwoorden onbeperkt te proberen.
+// De PIN-limiter telt per IP en per opgegeven gebruiker, zodat een aanvaller
+// niet alle accounts kan aflopen vanaf hetzelfde adres.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  message: { ok: false, reason: 'too-many-attempts' },
+});
+
+const pinLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 15,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    // ipKeyGenerator normaliseert IPv6 naar een /64-subnet; zonder die helper
+    // kan een IPv6-gebruiker de limiet omzeilen door per verzoek een ander
+    // adres uit hetzelfde blok te gebruiken.
+    const who = String((req.body || {}).idOrEmail || (req.body || {}).email || '').toLowerCase();
+    return `${ipKeyGenerator(req.ip)}|${who}`;
+  },
+  message: { ok: false, reason: 'too-many-attempts' },
+});
 
 const INVITE_TTL_DAYS = 7;
 const RESET_TTL_HOURS = 24;
@@ -71,7 +100,7 @@ async function findUserById(id) {
 // ============================================================
 //  Auth: login / logout / me
 // ============================================================
-router.post('/auth/login', wrap(async (req, res) => {
+router.post('/auth/login', loginLimiter, wrap(async (req, res) => {
   const { email, password } = req.body || {};
   const user = await findUserByEmail(email);
   // Geen user-enumeratie: zelfde reason voor onbekende user én fout wachtwoord.
@@ -97,20 +126,26 @@ router.get('/auth/me', requireAuth, (req, res) => {
 // ============================================================
 //  Gebruikersbeheer
 // ============================================================
-router.get('/users', requireAuth, wrap(async (req, res) => {
+// Volledige gebruikerslijst is beheerdersinformatie: wie is er, wie is admin.
+// Een gewone ingelogde gebruiker heeft die lijst niet nodig.
+router.get('/users', requireAdmin, wrap(async (req, res) => {
   const [rows] = await pool.query('SELECT * FROM users ORDER BY created_at ASC');
   res.json({ ok: true, data: rows.map(sanitizeUser) });
 }));
 
-// Lichtgewicht lijst voor de tablet-quickpick (geen auth — alleen niet-gevoelige velden).
+// Lichtgewicht lijst voor de tablet-quickpick. Dit endpoint is publiek omdat de
+// kiosk bij de deur geen sessie heeft, dus het geeft bewust het absolute
+// minimum: alleen een id, een weergavenaam en of er een PIN is ingesteld.
+// Géén e-mailadressen en géén rollen — die lekten hier eerder naar het
+// open internet. De tablet matcht op id, niet op e-mail.
 router.get('/users/quickpick', wrap(async (req, res) => {
   // Haal de pin_hash-kolom nooit op; bereken has_pin in SQL.
   const [rows] = await pool.query(
-    'SELECT id, name, email, role, (pin_hash IS NOT NULL) AS has_pin FROM users ORDER BY name ASC',
+    'SELECT id, name, (pin_hash IS NOT NULL) AS has_pin FROM users ORDER BY name ASC',
   );
   res.json({
     ok: true,
-    data: rows.map((u) => ({ id: u.id, name: u.name, email: u.email, role: u.role, hasPin: !!u.has_pin })),
+    data: rows.map((u) => ({ id: u.id, name: u.name, hasPin: !!u.has_pin })),
   });
 }));
 
@@ -190,8 +225,20 @@ router.delete('/users/:id/pin', requireAdmin, wrap(async (req, res) => {
   res.json({ ok: true });
 }));
 
+// Vertelt de tablet of een getypt e-mailadres bij een gebruiker met een PIN
+// hoort. Geeft bewust alleen een booleaan plus id en naam terug — nooit de
+// volledige gebruikerslijst. Rate-limited omdat dit anders een orakel is om
+// te testen welke e-mailadressen bestaan.
+router.post('/users/pin/required', pinLimiter, wrap(async (req, res) => {
+  const email = String((req.body || {}).email || '').trim();
+  if (!email) return res.json({ ok: true, data: { required: false } });
+  const user = await findUserByEmail(email);
+  if (!user || !user.pin_hash) return res.json({ ok: true, data: { required: false } });
+  res.json({ ok: true, data: { required: true, userId: user.id, name: user.name } });
+}));
+
 // Verifieer een PIN (publiek — tablet kent geen sessie).
-router.post('/users/pin/verify', wrap(async (req, res) => {
+router.post('/users/pin/verify', pinLimiter, wrap(async (req, res) => {
   const { idOrEmail, pin } = req.body || {};
   const key = String(idOrEmail || '');
   let user = await findUserById(key);
@@ -287,7 +334,7 @@ router.delete('/invites/:token', requireAdmin, wrap(async (req, res) => {
 router.post('/auth/reset/request', requireAdmin, wrap(async (req, res) => {
   const user = await findUserByEmail((req.body || {}).email);
   if (!user) return res.json({ ok: false, reason: 'unknown-user' });
-  const token = randomToken(16);
+  const token = randomToken(32);
   // Eén actieve reset per gebruiker.
   await pool.execute('DELETE FROM password_resets WHERE user_id = ?', [user.id]);
   await pool.execute(

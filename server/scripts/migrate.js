@@ -9,9 +9,12 @@ const fs = require('fs');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 
-const ADMIN_EMAIL = 'tom@h20.gg';
-const ADMIN_NAME = 'Tom';
-const ADMIN_PASSWORD = 'H20esports@';
+const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL || 'tom@h20.gg';
+const ADMIN_NAME = process.env.SEED_ADMIN_NAME || 'Tom';
+// Het seed-wachtwoord staat bewust NIET in de code: dit bestand zit in git.
+// Zet SEED_ADMIN_PASSWORD in server/.env (of in de omgeving) vóór de eerste
+// migratie. Bestaat de admin al, dan is de variabele niet nodig.
+const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD || '';
 
 function nowUtc() {
   return new Date().toISOString().slice(0, 19).replace('T', ' ');
@@ -41,13 +44,24 @@ async function main() {
       [ADMIN_EMAIL],
     );
     if (rows.length === 0) {
+      if (!ADMIN_PASSWORD) {
+        throw new Error(
+          'SEED_ADMIN_PASSWORD ontbreekt. De admin bestaat nog niet, dus er is een ' +
+            'seed-wachtwoord nodig. Zet SEED_ADMIN_PASSWORD in server/.env en draai opnieuw.',
+        );
+      }
+      if (ADMIN_PASSWORD.length < 12) {
+        throw new Error('SEED_ADMIN_PASSWORD is te kort — gebruik minimaal 12 tekens.');
+      }
       const hash = await bcrypt.hash(ADMIN_PASSWORD, 12);
       const id = 'u-tom-' + Date.now().toString(36);
       await conn.execute(
         'INSERT INTO users (id, email, name, role, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)',
         [id, ADMIN_EMAIL, ADMIN_NAME, 'admin', hash, nowUtc()],
       );
-      console.log(`  ✓ Admin aangemaakt: ${ADMIN_EMAIL} (wachtwoord: ${ADMIN_PASSWORD})`);
+      // Het wachtwoord zelf wordt niet gelogd — het staat al in de omgeving
+      // van degene die de migratie draait.
+      console.log(`  ✓ Admin aangemaakt: ${ADMIN_EMAIL} (wachtwoord uit SEED_ADMIN_PASSWORD)`);
     } else {
       console.log(`  • Admin bestaat al: ${ADMIN_EMAIL} (overgeslagen)`);
     }

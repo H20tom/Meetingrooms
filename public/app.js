@@ -6,7 +6,7 @@
    ============================================================ */
 
 const ROOMS = {
-  aquarium: { id: 'aquarium', name: 'Aquarium',    subtitle: 'Glazen ruimte · 1e verdieping' },
+  aquarium: { id: 'aquarium', name: 'Edu Lab',     subtitle: 'Glazen ruimte · 1e verdieping' },
   bundled:  { id: 'bundled',  name: 'Bundled',     subtitle: 'Brainstormruimte · 1e verdieping' },
   lounge:   { id: 'lounge',   name: 'Lounge Café', subtitle: 'Café-zone · 1e verdieping' },
   raboroom: { id: 'raboroom', name: 'Raboroom',    subtitle: 'Vergaderruimte · 1e verdieping' },
@@ -179,13 +179,23 @@ async function canSchedule(roomId, startAt, endAt) {
 }
 
 // ---------- mutations ----------
-async function startMeeting(roomId, durationMin, { title = null, email = null, name = null, showTitleOnScreen = false } = {}) {
-  if (!isValidEmail(email)) return { ok: false, reason: 'invalid-email' };
+// Boeken kan op twee manieren: met een getypt e-mailadres, of met een userId
+// uit de tablet-quickpick. In dat laatste geval zoekt de server het adres zelf
+// op — de quickpick geeft bewust geen e-mailadressen meer terug.
+async function startMeeting(roomId, durationMin, { title = null, email = null, name = null, userId = null, showTitleOnScreen = false } = {}) {
+  if (!userId && !isValidEmail(email)) return { ok: false, reason: 'invalid-email' };
   const r = await apiFetch(`/rooms/${encodeURIComponent(roomId)}/start`, {
     method: 'POST',
-    body: { durationMin, title, email: email.trim(), name: name ? String(name).trim() : null, showTitleOnScreen: !!(showTitleOnScreen && title) },
+    body: {
+      durationMin,
+      title,
+      userId: userId || null,
+      email: userId ? null : email.trim(),
+      name: userId ? null : (name ? String(name).trim() : null),
+      showTitleOnScreen: !!(showTitleOnScreen && title),
+    },
   });
-  if (r.ok) setLastEmail(email.trim());
+  if (r.ok && !userId) setLastEmail(email.trim());
   return r;
 }
 
@@ -199,20 +209,21 @@ async function endMeeting(roomId) {
   return apiFetch(`/rooms/${encodeURIComponent(roomId)}/end`, { method: 'POST' });
 }
 
-async function scheduleMeeting(roomId, { startAt, endAt, title, email, name, showTitleOnScreen = false }) {
-  if (!isValidEmail(email)) return { ok: false, reason: 'invalid-email' };
+async function scheduleMeeting(roomId, { startAt, endAt, title, email, name, userId = null, showTitleOnScreen = false }) {
+  if (!userId && !isValidEmail(email)) return { ok: false, reason: 'invalid-email' };
   const r = await apiFetch(`/rooms/${encodeURIComponent(roomId)}/schedule`, {
     method: 'POST',
     body: {
       startAt: new Date(startAt).toISOString(),
       endAt: new Date(endAt).toISOString(),
       title: title || null,
-      email: email.trim(),
-      name: name ? String(name).trim() : null,
+      userId: userId || null,
+      email: userId ? null : email.trim(),
+      name: userId ? null : (name ? String(name).trim() : null),
       showTitleOnScreen: !!(showTitleOnScreen && title),
     },
   });
-  if (r.ok) setLastEmail(email.trim());
+  if (r.ok && !userId) setLastEmail(email.trim());
   return r;
 }
 
@@ -233,6 +244,11 @@ function ensureToastContainer() {
   return el;
 }
 
+// LET OP: `message` wordt bewust als HTML gerenderd — call sites gebruiken
+// <strong> voor tijden en aantallen. Alles wat uit de database of van een
+// gebruiker komt (meeting-titels, namen, e-mailadressen, formulierwaarden)
+// MOET door escapeHtml() voordat het in `message` belandt. `title` en
+// `action.label` worden hieronder wel automatisch geëscaped.
 function toast({ type = 'info', title = '', message = '', action = null, duration = 6000 }) {
   const container = ensureToastContainer();
   const t = document.createElement('div');
@@ -240,9 +256,9 @@ function toast({ type = 'info', title = '', message = '', action = null, duratio
   t.innerHTML = `
     <div class="toast__icon" aria-hidden="true">${type === 'error' ? '!' : type === 'warn' ? '!' : type === 'success' ? '✓' : 'i'}</div>
     <div class="toast__body">
-      ${title ? `<strong class="toast__title">${title}</strong>` : ''}
+      ${title ? `<strong class="toast__title">${escapeHtml(title)}</strong>` : ''}
       <div class="toast__msg">${message}</div>
-      ${action ? `<button class="toast__action">${action.label}</button>` : ''}
+      ${action ? `<button class="toast__action">${escapeHtml(action.label)}</button>` : ''}
     </div>
     <button class="toast__close" aria-label="Sluiten">×</button>
   `;

@@ -96,6 +96,14 @@ async function verifyUserPin(idOrEmail, pin) {
   return api('/users/pin/verify', { method: 'POST', body: { idOrEmail, pin } });
 }
 
+// Vraagt de server of dit e-mailadres bij een gebruiker met PIN hoort.
+// Bewust een losse vraag per adres: de quickpick-lijst bevat geen
+// e-mailadressen meer, zodat die niet in bulk op te halen zijn.
+async function pinRequiredForEmail(email) {
+  const r = await api('/users/pin/required', { method: 'POST', body: { email } });
+  return r.ok && r.data ? r.data : { required: false };
+}
+
 async function listUsersForQuickPick() {
   const r = await api('/users/quickpick');
   return r.ok && Array.isArray(r.data) ? r.data : [];
@@ -210,7 +218,7 @@ window.Auth = {
   login, logout,
   getCurrentUser, isAdmin, canViewHistory,
   listUsers, addUser, updateUser, removeUser,
-  setUserPin, clearUserPin, verifyUserPin, listUsersForQuickPick,
+  setUserPin, clearUserPin, verifyUserPin, listUsersForQuickPick, pinRequiredForEmail,
   requestPasswordReset, resetPasswordWithToken, listPendingResets,
   createInvite, getInvite, consumeInvite, listInvites, revokeInvite, buildInviteMailto,
   createPinSetupLink, consumePinSetup,

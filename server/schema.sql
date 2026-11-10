@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS pin_setups (
 
 -- ---- Seed: 4 vaste ruimtes ----
 INSERT INTO rooms (id, name, subtitle, sort_order) VALUES
-  ('aquarium', 'Aquarium',    'Glazen ruimte · 1e verdieping',     1),
+  ('aquarium', 'Edu Lab',     'Glazen ruimte · 1e verdieping',     1),
   ('bundled',  'Bundled',     'Brainstormruimte · 1e verdieping',  2),
   ('lounge',   'Lounge Café', 'Café-zone · 1e verdieping',         3),
   ('raboroom', 'Raboroom',    'Vergaderruimte · 1e verdieping',    4)
