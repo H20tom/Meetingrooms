@@ -64,9 +64,33 @@ RSYNC_FILTER=(
   --exclude='*'
 )
 
-MODUS="${1:-}"
-if [[ "$MODUS" != "--controle" && "$MODUS" != "--deploy" ]]; then
-  echo "Gebruik: bash deploy.sh --controle | --deploy"
+MODUS=""
+VOLLEDIG=false
+OPRUIMEN=false
+for arg in "$@"; do
+  case "$arg" in
+    --controle|--deploy) MODUS="$arg" ;;
+    # Eerste keer, of na handmatig geknoei op de server: stuur alles en haal
+    # binnen de verstuurde mappen weg wat hier niet meer bestaat. De
+    # bestandenrem gaat dan uit.
+    --volledig) VOLLEDIG=true ;;
+    # Ruim ook op wat helemaal niet op de server hoort: een .git-map,
+    # documentatie en losse scripts. Alleen samen met --volledig.
+    --opruimen) OPRUIMEN=true ;;
+    *) echo "Onbekende optie: $arg"; exit 1 ;;
+  esac
+done
+if [[ -z "$MODUS" ]]; then
+  echo "Gebruik: bash deploy.sh --controle | --deploy [--volledig] [--opruimen]"
+  echo ""
+  echo "  --controle   laat zien wat er zou gebeuren, wijzigt niets"
+  echo "  --deploy     voert het echt uit"
+  echo "  --volledig   stuur alles en verwijder op de server wat lokaal weg is"
+  echo "  --opruimen   haal ook .git, documentatie en losse scripts van de server"
+  exit 1
+fi
+if [[ "$OPRUIMEN" == true && "$VOLLEDIG" != true ]]; then
+  echo "--opruimen kan alleen samen met --volledig."
   exit 1
 fi
 
@@ -103,7 +127,7 @@ gezondheid() {
 }
 
 zeg "${VET}Deploy Meetingrooms H20${UIT}"
-zeg "modus     : $MODUS"
+zeg "modus     : $MODUS$( [[ "$VOLLEDIG" == true ]] && echo " --volledig" )$( [[ "$OPRUIMEN" == true ]] && echo " --opruimen" )"
 zeg "doel      : $SSH_DOEL:$SERVER_MAP"
 zeg "logboek   : $LOGBESTAND"
 
@@ -217,6 +241,14 @@ kop "4. Wat gaat er mee"
 RSYNC_BASIS=(-az --checksum --itemize-changes --no-perms --no-owner --no-group
              -e "ssh ${SSH_OPTS[*]}")
 
+# In volledige modus mag rsync binnen de verstuurde mappen opruimen wat hier
+# niet meer bestaat. Uitgesloten bestanden worden daarbij NIET verwijderd —
+# dat is het standaardgedrag van --delete zonder --delete-excluded — dus
+# server/.env, node_modules, tmp en backups blijven gegarandeerd staan.
+if [[ "$VOLLEDIG" == true ]]; then
+  RSYNC_BASIS+=(--delete)
+fi
+
 DROOG="$(rsync "${RSYNC_BASIS[@]}" --dry-run "${RSYNC_FILTER[@]}" \
           "$LOKALE_MAP/" "$SSH_DOEL:$SERVER_MAP/" 2>&1)"
 RS_CODE=$?
@@ -239,10 +271,29 @@ fi
 zeg "         ${#TE_STUREN[@]} bestand(en) wijken af, waarvan ${NIEUW_AANTAL} nieuw:"
 for f in "${TE_STUREN[@]}"; do zeg "           - $f"; done
 
-if [[ ${#TE_STUREN[@]} -gt $MAX_BESTANDEN ]]; then
+if [[ "$VOLLEDIG" == true ]]; then
+  letop "bestandenrem staat uit (--volledig)"
+elif [[ ${#TE_STUREN[@]} -gt $MAX_BESTANDEN ]]; then
   fout "dat zijn er meer dan verwacht ($MAX_BESTANDEN). Controleer eerst wat er"
   fout "aan de hand is. Gestopt."
+  zeg "        Is dit de eerste volledige overzet? Gebruik dan --volledig."
   exit 1
+fi
+
+# Wat staat er op de server dat hier niet hoort? Een .git-map betekent dat de
+# server nog via git pull bijgewerkt wordt; dat gaat uit de pas lopen zodra je
+# met rsync werkt. Documentatie en losse scripts horen er sowieso niet.
+mapfile -t VREEMD < <(opserver "cd $SERVER_MAP 2>/dev/null && ls -A1" 2>/dev/null \
+  | grep -vE '^(app\.js|\.node-version|public|server|tmp|backups|node_modules)$' || true)
+if [[ ${#VREEMD[@]} -gt 0 ]]; then
+  zeg ""
+  letop "op de server staat ook, en dat hoort er niet:"
+  for f in "${VREEMD[@]}"; do zeg "           ? $f"; done
+  if [[ "$OPRUIMEN" == true ]]; then
+    zeg "         Deze worden verwijderd (--opruimen)."
+  else
+    zeg "         Deze blijven staan. Gebruik --volledig --opruimen om ze weg te halen."
+  fi
 fi
 
 # Wat moet er na het versturen gebeuren?
@@ -273,7 +324,7 @@ opserver "mkdir -p $BACKUP_MAP" || { fout "kon geen reservekopie-map maken — g
 # Alles wat we kunnen overschrijven in één archief. server/.env gaat bewust
 # mee in de kopie — niet om te versturen, maar om hem terug te kunnen zetten
 # als er onverhoopt iets mee gebeurt.
-if opserver "cd $SERVER_MAP && tar czf $BACKUP_TAR --exclude=backups --exclude=node_modules --exclude=tmp app.js .node-version public server 2>/dev/null"; then
+if opserver "cd $SERVER_MAP && tar czf $BACKUP_TAR --exclude=./backups --exclude=./node_modules --exclude=./tmp --exclude=./server/node_modules . 2>/dev/null"; then
   GROOTTE="$(opserver "du -h $BACKUP_TAR | cut -f1" | tr -d '[:space:]')"
   goed "reservekopie gemaakt ($GROOTTE)"
   zeg "         $BACKUP_TAR"
@@ -303,6 +354,20 @@ else letop "$REST bestand(en) wijken nog steeds af"; fi
 
 opserver "chmod -R u+rw,go+r,go-w $SERVER_MAP/public $SERVER_MAP/server $SERVER_MAP/app.js 2>/dev/null" \
   && goed "rechten gezet"
+
+if [[ "$OPRUIMEN" == true && ${#VREEMD[@]} -gt 0 ]]; then
+  kop "6b. Opruimen op de server"
+  for f in "${VREEMD[@]}"; do
+    # Dubbele rem: nooit iets weghalen dat de app nodig heeft.
+    case "$f" in
+      tmp|backups|node_modules|public|server|app.js|.node-version)
+        letop "$f overgeslagen (hoort er wel)"; continue ;;
+    esac
+    if opserver "rm -rf -- $SERVER_MAP/$f"; then goed "$f verwijderd"
+    else letop "$f kon niet verwijderd worden"; fi
+  done
+  zeg "         De reservekopie bevat ze nog, mocht je er een terug willen."
+fi
 
 # ── 7. Terugzetten bij problemen ────────────────────────────────────────────
 terugzetten() {

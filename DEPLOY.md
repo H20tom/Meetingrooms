@@ -17,6 +17,22 @@ bash deploy.sh --controle    # laat zien wat er zou gebeuren, wijzigt niets
 bash deploy.sh --deploy      # voert het echt uit
 ```
 
+De eerste keer, of na handmatig knutselen op de server:
+
+```bash
+bash deploy.sh --controle --volledig --opruimen   # eerst kijken
+bash deploy.sh --deploy   --volledig --opruimen   # dan doen
+```
+
+`--volledig` zet de bestandenrem uit en laat rsync binnen `public/` en
+`server/` opruimen wat lokaal niet meer bestaat. `server/.env`,
+`node_modules`, `tmp/` en `backups/` worden daarbij nooit aangeraakt: die
+staan in de uitsluitlijst en `--delete` laat uitgesloten bestanden met rust.
+
+`--opruimen` haalt daarnaast weg wat helemaal niet op de server hoort — een
+`.git`-map, documentatie, losse scripts. Dat lijstje wordt eerst getoond en
+staat ook in de reservekopie, dus je kunt altijd terug.
+
 Het script doet achtereenvolgens: lokale syntaxcontrole van alle JS en van de
 inline scripts in de pagina's, controleren of de server en `server/.env`
 bereikbaar zijn, een rsync-proefrun met de lijst te versturen bestanden, een
