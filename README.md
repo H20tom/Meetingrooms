@@ -1,92 +1,126 @@
 # Meetingrooms H20
 
-Tablet-gebaseerd reserveringssysteem voor de 4 meetingrooms van H20 Esports Campus Amsterdam (Aquarium, Bundled, Lounge Café, Raboroom). Centraal dashboard, gebruikersbeheer, kiosk-bescherming en offline-mode. `Meetings@h20.gg` is het e-maildomein; de app heet **Meetingrooms H20**.
+Reserveringssysteem voor de 4 meetingrooms van H20 Esports Campus Amsterdam
+(Edu Lab, Bundled, Lounge Café, Raboroom). Tablet-kiosk per ruimte, een centraal
+dashboard, gebruikersbeheer en kiosk-bescherming. Draait **live** op
+<https://meetings.h20.gg>.
 
-Statische frontend — geen build, geen dependencies. Te hosten op iedere webserver. State staat nu nog in `localStorage`. In fase 2 wordt dit zonder API-wijziging vervangen door een **Node.js + Express + MySQL** backend (zie `server/`); de frontend-koppeling volgt later.
+`Meetings@h20.gg` is het e-maildomein; de app heet **Meetingrooms H20**.
 
-## Inhoud
+## Stack
 
-| Bestand | Doel |
-|---|---|
-| `index.html` | Portal — entry-pagina met links naar tablets, dashboard en beheer |
-| `tablet.html` | Tablet-kiosk interface (per ruimte) |
-| `dashboard.html` | Centraal online dashboard (alle 4 ruimtes) |
-| `styles.css` | Gedeelde styling, design tokens, H20 branding |
-| `app.js` | Demo-logica (mock state, klok, meeting starten/verlengen) |
-| `auth.js` | Login + gebruikersbeheer (SHA-256, localStorage, fase 2 → backend bcrypt) |
-| `kiosk.js` | Kiosk-bescherming voor tablets (fullscreen, wake-lock, anti-escape, exit-PIN) |
-| `sw.js` | Service Worker — offline cache zodat de tablet blijft werken zonder netwerk |
-| `login.html` | Inlogpagina + wachtwoord-reset (6-cijferige code) |
-| `admin.html` | Beheerpaneel: gebruikers, Kiosk config |
-| `Logo H20 2026.png` | Officieel H20 logo |
-| `server/` | Backend-API (Node + Express + MySQL) — fase 2, draait los van de frontend |
+- **Frontend:** vanilla HTML/CSS/JS, geen build-step. State komt van de API
+  (`window.H20` in `app.js`, `window.Auth` in `auth.js`). Service Worker
+  (`sw.js`) cachet de statische assets voor offline-werking; `/api` wordt nooit
+  gecachet.
+- **Backend:** Node.js + Express + MySQL/MariaDB in `server/`. bcrypt-hashing
+  (wachtwoorden én PINs), httpOnly sessie-cookies, same-origin met de frontend.
+- **Hosting:** Plesk + Phusion Passenger. App-root `~/meetings.h20.gg`, webroot
+  `~/meetings.h20.gg/public`, entrypoint `app.js` (`require('./server/index.js')`),
+  Node 24 (`.node-version`).
 
-## Admin login (demo)
+## Repo-layout
 
-- **E-mail:** `tom@h20.gg`
-- **Wachtwoord:** `H20esports@`
-
-Wachtwoord wijzigen en nieuwe gebruikers/admins toevoegen kan via `admin.html`.
-
-## Hoe gebruiken
-
-### Lokaal bekijken
-Dubbelklik `index.html` — opent direct in de browser. Geen build, geen install.
-
-Of via een lokale server (aanbevolen voor de tablet kiosk-mode):
-```bash
-cd "/home/tom/Desktop/Claude/Meetingroom Project"
-python3 -m http.server 8080
 ```
-Daarna openen: <http://localhost:8080/>
-
-### URLs
-- **Showcase / pitch**: `index.html`
-- **Tablet Aquarium**: `tablet.html?room=aquarium`
-- **Tablet Bundled**: `tablet.html?room=bundled`
-- **Tablet Lounge Café**: `tablet.html?room=lounge`
-- **Tablet Raboroom**: `tablet.html?room=raboroom`
-- **Centraal dashboard**: `dashboard.html`
-
-Iedere tablet is hardcoded gekoppeld aan **één** ruimte via de URL-parameter.
-Geen dropdown of switcher — exact zoals vereist.
+.
+├── app.js                  # Passenger-entrypoint → require('./server/index.js')
+├── .node-version           # 24
+├── public/                 # webroot (statische frontend)
+│   ├── index.html          # portal / entry-pagina
+│   ├── login.html          # inloggen + wachtwoord-reset (via admin)
+│   ├── dashboard.html      # centraal overzicht alle 4 ruimtes (+ verlengen/beëindigen)
+│   ├── tablet.html         # tablet-kiosk per ruimte (?room=...)
+│   ├── admin.html          # beheer: gebruikers, uitnodigingen, historie, resets, kiosk
+│   ├── app.js              # window.H20 — rooms/meetings (async REST)
+│   ├── auth.js             # window.Auth — login/gebruikers/PIN (async REST)
+│   ├── kiosk.js            # kiosk-bescherming (fullscreen, wake-lock, exit-PIN)
+│   ├── sw.js               # service worker (offline cache, cachet /api niet)
+│   ├── styles.css          # design tokens + H20 branding
+│   ├── robots.txt          # interne tool — niet indexeren
+│   └── Logo H20 2026.png
+├── server/                 # backend-API (zie server/README.md)
+├── README.md               # dit bestand
+├── PROJECT_PLAN.md         # functionele scope + roadmap
+├── DEPLOY.md               # deploy- en beheer-instructies
+└── DEPLOY-SECRETS.local.md # echte wachtwoorden/SSH/DB — NIET in git
+```
 
 ## De 4 meetingrooms
-1. **Aquarium**
-2. **Bundled**
-3. **Lounge Café**
-4. **Raboroom**
 
-## Design principes
-- **Branding**: H20 magenta (#E6175C) als primaire accent, donkere oppervlakken voor het dashboard.
-- **Status-kleuren**: helder groen (beschikbaar) en helder rood (bezet) vullen het hele tablet-scherm — zichtbaar vanaf de gang.
-- **Touch-first**: knoppen zijn minimaal 96px hoog, ruime witruimte, geen kleine controls.
-- **Zero-learning**: één blik = status duidelijk. Geen menu's, geen instellingen op de tablet.
-- **Realtime-klaar**: de architectuur (gedeelde mock store in `app.js`) is identiek aan een latere backend/websocket-integratie — alleen de transport-laag verandert.
+| ID         | Naam        |
+|------------|-------------|
+| `aquarium` | Edu Lab     |
+| `bundled`  | Bundled     |
+| `lounge`   | Lounge Café |
+| `raboroom` | Raboroom    |
 
-## Roadmap naar productie (fase 2+)
-1. Backend: **Node.js + Express + MySQL** — scaffold staat in `server/` (zie `server/README.md`). MySQL draait op een externe server.
-2. `app.js` / `auth.js` koppelen aan de API (van synchroon localStorage naar async fetch).
-3. Auth voor het dashboard (medewerker login) — server-side bcrypt + sessie-cookies.
-4. Outlook/Google Calendar sync.
-5. Kiosk-mode deploy op tablets (Android Fully Kiosk Browser of vergelijkbaar).
+Iedere tablet is via URL-parameter hardcoded aan één ruimte gekoppeld:
+`tablet.html?room=aquarium` (en `bundled` / `lounge` / `raboroom`). Geen
+ruimte-switcher op de tablet. De id `aquarium` blijft bewust staan na de
+hernoeming naar Edu Lab: hij zit in de tablet-bookmarks, in alle bestaande
+historie-regels en in de foreign keys. Alleen de weergavenaam is gewijzigd.
 
-## Doorzetten naar een server
-De frontend is puur statisch:
-- Upload de hele map naar elke webhost (Netlify, Vercel, eigen Nginx, S3+CloudFront).
-- Of: zet `python3 -m http.server` / `nginx` op een interne machine in het netwerk.
+## Rollen
 
-De backend (`server/`) draait apart als Node-proces tegen MySQL — setup en SSH-tunnel-instructies staan in `server/README.md`.
+| Rol     | Mag |
+|---------|-----|
+| `admin` | Alles: gebruikers/uitnodigingen beheren, wachtwoord-resets, kiosk-config, historie inzien + wissen, meetings beheren. |
+| `h20`   | Standaard gebruikersrechten **plus** de vergader-historie inzien en exporteren in Beheer (geen wissen, geen gebruikersbeheer/kiosk). |
+| `user`  | Dashboard bekijken en meetings starten/verlengen/beëindigen/plannen. Geen toegang tot Beheer. |
 
-## Status van dit concept
-- [x] Tablet "Beschikbaar" scherm
-- [x] Tablet "Bezet" scherm
-- [x] Tijd kiezen (30/60/90/Anders)
-- [x] Custom tijd via "Anders"
-- [x] Meeting verlengen (+15/+30/+60)
-- [x] Centraal dashboard met alle 4 ruimtes
-- [x] Live klok
-- [x] H20 branding met logo
-- [x] Responsive (desktop + tablet liggend/staand)
-- [x] Backend-scaffold (Node + Express + MySQL) in `server/` — fase 2
-- [ ] Frontend koppelen aan de backend-API — fase 2 vervolgstap
+De tablet-kiosk zelf is bewust openbaar (anders werkt het niet bij de deur);
+het dashboard en Beheer vereisen een sessie.
+
+## URLs
+
+- **Portal:** `index.html`
+- **Dashboard:** `dashboard.html`
+- **Beheer:** `admin.html` (admin + h20)
+- **Tablets:** `tablet.html?room=aquarium` · `?room=bundled` · `?room=lounge` · `?room=raboroom`
+
+## Lokaal draaien (ontwikkelen)
+
+De productie-app draait op Plesk; lokaal gebruik je de dev-server die frontend +
+`/api` op één origin serveert (zoals productie):
+
+```bash
+# 1. Lokale database (eenmalig per boot)
+sudo service mariadb start
+
+# 2. Dev-server: frontend + /api same-origin op poort 8080
+cd server
+node dev-local.js
+```
+
+- Open: <http://localhost:8080/login.html>
+- Healthcheck: `curl http://localhost:8080/healthz` → `{"ok":true,"db":"up"}`
+- `dev-local.js` is **dev-only** en `.gitignore`'d — wordt nooit gepusht.
+- Backend-setup, migratie en endpoints: zie [`server/README.md`](server/README.md).
+
+## Login
+
+- E-mail: `tom@h20.gg`
+- Wachtwoord: het actuele wachtwoord staat in `DEPLOY-SECRETS.local.md` (de
+  migratie-seed wordt na de eerste login gewijzigd en blijft daarna behouden).
+
+Nieuwe gebruikers/uitnodigingen + rolwijzigingen lopen via `admin.html`.
+
+## Deploy
+
+Code staat op GitHub (`H20tom/Meetingrooms`, branch `main`). Op de server:
+`git pull` → eventuele DB-migratie → `touch tmp/restart.txt`. Volledige stappen,
+verificatie en troubleshooting: zie [`DEPLOY.md`](DEPLOY.md).
+
+## Status
+
+- [x] Tablet beschikbaar/bezet, reserveren (30/60/90/anders), verlengen (+15/+30/+60), beëindigen
+- [x] Vooraf plannen + conflict-bescherming
+- [x] Centraal dashboard met verlengen/beëindigen vanaf de kaart
+- [x] PIN bij account-aanmaak (tablet-check-in)
+- [x] Login + gebruikersbeheer, uitnodigingen, wachtwoord-resets (admin-gestuurd)
+- [x] Rollen `admin` / `user` / `h20`
+- [x] Offline-cache (service worker) + kiosk-bescherming
+- [x] Backend live op MySQL/MariaDB, frontend volledig op de REST-API
+- [x] Productie live op <https://meetings.h20.gg> (Plesk + Passenger)
+- [ ] Outlook/Google Calendar-sync (fase 3)
+- [ ] Fysieke tablet-rollout in kiosk-mode (fase 4)

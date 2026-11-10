@@ -1,21 +1,22 @@
-# Deploy & Status — Meetingrooms H20
+# Deploy & Beheer — Meetingrooms H20
 
 > **Geheimen staan NIET in dit bestand** (het zit in git/GitHub). De echte
 > wachtwoorden, DB- en SSH-gegevens staan in `DEPLOY-SECRETS.local.md` — dat
 > bestand is `.gitignore`'d en blijft op de lokale machine.
 
-Laatst bijgewerkt: 2026-05-29
+Laatst bijgewerkt: 2026-06-10
 
 ---
 
 ## 1. Architectuur (kort)
 
-- **Frontend:** vanilla HTML/CSS/JS (`index.html`, `login.html`, `dashboard.html`,
-  `admin.html`, `tablet.html`, `app.js`, `auth.js`).
-- **Backend:** Node + Express + MySQL/MariaDB in `server/` (`index.js` = startbestand).
-- **Data:** centrale database (rooms, meetings, users, PIN's, history). Geen
-  `localStorage` meer als bron van waarheid → 4 tablets + event managers delen
-  dezelfde data.
+- **Frontend:** vanilla HTML/CSS/JS in `public/` (`index.html`, `login.html`,
+  `dashboard.html`, `admin.html`, `tablet.html`, `app.js`, `auth.js`, `kiosk.js`,
+  `sw.js`, `styles.css`).
+- **Backend:** Node.js + Express + MySQL/MariaDB in `server/` (`server/index.js`).
+- **Entrypoint:** repo-root `app.js` → `require('./server/index.js')`.
+- **Data:** centrale database (rooms, meetings, users, PINs, history) — 4 tablets
+  + dashboard + Beheer delen dezelfde data.
 - **Same-origin:** frontend en `/api` draaien onder dezelfde host, zodat de
   httpOnly sessie-cookie werkt zonder CORS-gedoe.
 
@@ -26,87 +27,89 @@ Laatst bijgewerkt: 2026-05-29
 | Omgeving   | Status | Toelichting |
 |------------|--------|-------------|
 | **Lokaal** | ✅ Werkt end-to-end | MariaDB draait, migratie gedaan, login/dashboard/tablet/admin getest. |
-| **Productie** (`https://meetings.h20.gg`) | ⚠️ Frontend live, **API draait nog niet** | Passenger draait een stub-app: elke `/api`-call geeft `NODE-OK v24.16.0` (platte tekst) i.p.v. JSON → inloggen mislukt. |
+| **Productie** (`https://meetings.h20.gg`) | ✅ Live | Plesk + Passenger draaien `server/index.js`; frontend volledig op de REST-API. |
 
-**Diagnose productie (29-05):**
+```bash
+curl -s https://meetings.h20.gg/healthz   # {"ok":true,"db":"up"}
 ```
-curl https://meetings.h20.gg/         → 200, jouw HTML (nginx, statisch)  ✅
-curl https://meetings.h20.gg/healthz  → 200 "NODE-OK v24.16.0" (text/plain) ❌
-curl https://meetings.h20.gg/api/auth/me → idem "NODE-OK v24.16.0"          ❌
-```
-→ Het Passenger-startbestand verwijst naar een stub, niet naar `server/index.js`.
 
 ---
 
-## 3. Lokaal draaien (ontwikkelen/testen)
+## 3. Hosting-feiten (Plesk + Passenger)
+
+| Onderdeel | Waarde |
+|-----------|--------|
+| App-root | `~/meetings.h20.gg` |
+| Webroot (statische frontend) | `~/meetings.h20.gg/public` |
+| Application Startup File | `app.js` (= `require('./server/index.js')`) |
+| Node-versie | 24 (`.node-version`) |
+| Restart-trigger | `touch ~/meetings.h20.gg/tmp/restart.txt` |
+| Database | naam `admin_meetings`, gebruiker `h20meeting` |
+
+Passenger zet `process.env.PORT` zelf; `server/index.js` luistert daarop.
+
+---
+
+## 4. Lokaal draaien (ontwikkelen/testen)
 
 ```bash
 # 1. Database (eenmalig per boot)
 sudo service mariadb start
 
 # 2. Dev-server (frontend + /api same-origin op poort 8080)
-cd "Claude/Meetingroom Project/server"
+cd server
 node dev-local.js          # of: npm run dev (alleen API op 4000)
 ```
 
 - Open: <http://localhost:8080/login.html>
 - Healthcheck: `curl http://localhost:8080/healthz` → `{"ok":true,"db":"up"}`
 - **Let op:** `dev-local.js` is dev-only en `.gitignore`'d (wordt nooit gepusht).
-- Sluit je de terminal/computer af → poort 8080 stopt; herstart met bovenstaande.
 
 ---
 
-## 4. Productie-fix (deploy-stappen)
+## 5. Deployen (code-update naar productie)
 
-> Vereist SSH-toegang tot de Plesk-server. Echte host/user/wachtwoord:
-> zie `DEPLOY-SECRETS.local.md`.
-
-Paden op de server:
-- App-root: `~/meetings.h20.gg`
-- Webroot (statische frontend): `~/meetings.h20.gg/public`
-- Passenger-startbestand: het bestand dat Plesk als "Application Startup File"
-  gebruikt (geeft nu `NODE-OK` terug).
-
-### Stappen
+De server heeft een git-checkout van `H20tom/Meetingrooms` (branch `main`).
+Standaard-flow:
 
 ```bash
-# 0. SSH naar de server (gegevens in DEPLOY-SECRETS.local.md)
+# 1. SSH naar de server (gegevens in DEPLOY-SECRETS.local.md)
 ssh <user>@<host>
 
-# 1. Code ophalen/bijwerken (git of rsync vanaf lokaal)
+# 2. Code ophalen
 cd ~/meetings.h20.gg
-git pull           # als er een git-checkout op de server staat
-#   of vanaf lokaal:  rsync -av --exclude node_modules --exclude .env \
-#                     "./" <user>@<host>:~/meetings.h20.gg/
+git pull origin main
 
-# 2. Dependencies (productie-only)
+# 3. (alleen als server/package.json wijzigde) productie-deps
 cd ~/meetings.h20.gg/server
 npm install --omit=dev
 
-# 3. .env aanmaken op de server (NIET in git) — zie DEPLOY-SECRETS.local.md
-#    Belangrijk voor productie:
-#      COOKIE_SECURE=true
-#      CORS_ORIGIN=https://meetings.h20.gg
-#      PORT=<poort die Passenger toewijst; Passenger zet process.env.PORT zelf>
-
-# 4. Database initialiseren (tabellen + 4 rooms + admin)
+# 4. (alleen bij schema-/migratie-wijziging) migratie draaien
 node scripts/migrate.js
 
-# 5. Passenger-stub vervangen door de echte app
-#    Het startbestand moet effectief dit doen:
-#        require('./server/index.js');
-#    (server/index.js luistert op process.env.PORT die Passenger zet)
-
-# 6. Passenger herstarten
-mkdir -p ~/meetings.h20.gg/tmp
+# 5. Passenger herstarten
 touch ~/meetings.h20.gg/tmp/restart.txt
+```
+
+> **Frontend-only wijzigingen** (HTML/CSS/JS in `public/`) vereisen geen restart,
+> maar bump wél `CACHE_VERSION` in `public/sw.js` (nu `v17`) zodat de service
+> worker de nieuwe assets oppikt.
+
+### DB-migratie voor de `h20`-rol (eenmalig)
+
+Een `ALTER TABLE` vereist géén app-restart. Draaien als de DB-gebruiker
+`h20meeting` op database `admin_meetings`:
+
+```sql
+ALTER TABLE users   MODIFY role ENUM('admin','user','h20') NOT NULL DEFAULT 'user';
+ALTER TABLE invites MODIFY role ENUM('admin','user','h20') NOT NULL DEFAULT 'user';
 ```
 
 ### Verifiëren na deploy
 
 ```bash
 curl -s https://meetings.h20.gg/healthz
-#   verwacht: {"ok":true,"db":"up"}   (JSON, GEEN "NODE-OK")
+#   verwacht: {"ok":true,"db":"up"}
 
 curl -s -X POST https://meetings.h20.gg/api/auth/login \
   -H 'Content-Type: application/json' \
@@ -116,34 +119,43 @@ curl -s -X POST https://meetings.h20.gg/api/auth/login \
 
 Daarna inloggen op <https://meetings.h20.gg/login.html>.
 
-> **Na de eerste succesvolle login: wijzig het admin-wachtwoord.**
-
 ---
 
-## 5. Login
+## 6. Login
 
 - E-mail: `tom@h20.gg`
-- Wachtwoord: zie `DEPLOY-SECRETS.local.md` (standaard seed; na deploy wijzigen).
-- De migratie overschrijft een **bestaand** account niet — een gewijzigd
-  wachtwoord blijft dus behouden bij een volgende migratie.
+- Wachtwoord: zie `DEPLOY-SECRETS.local.md` (migratie-seed; na de eerste login
+  gewijzigd en daarna behouden — de migratie overschrijft een bestaand account niet).
+- Nieuwe gebruikers/uitnodigingen + rolwijzigingen lopen via `admin.html`.
 
 ---
 
-## 6. Veelvoorkomende problemen
+## 7. Rollen
+
+| Rol     | Mag |
+|---------|-----|
+| `admin` | Alles: gebruikers/uitnodigingen, wachtwoord-resets, kiosk-config, historie inzien + wissen, meetings beheren. |
+| `h20`   | Standaard gebruikersrechten **plus** de vergader-historie inzien en exporteren in Beheer (geen wissen, geen gebruikersbeheer/kiosk). |
+| `user`  | Dashboard + meetings starten/verlengen/beëindigen/plannen. Geen toegang tot Beheer. |
+
+---
+
+## 8. Veelvoorkomende problemen
 
 | Symptoom | Oorzaak | Oplossing |
 |----------|---------|-----------|
 | Lokaal: kan niet inloggen | dev-server (8080) of MariaDB staat uit | `sudo service mariadb start` + `node dev-local.js` |
-| Productie: `NODE-OK v...` op `/api/*` | Passenger draait de stub | Stub vervangen door `require('./server/index.js')` + restart (§4) |
-| Login "werkt" maar redirect niet | browser-cache / service worker | hard refresh; sw.js cachet `/api` niet (cache v15) |
-| `db: down` op /healthz | DB-creds of MySQL onbereikbaar | controleer `server/.env` DB-waarden |
+| Productie: oude assets na deploy | service worker cachet de vorige versie | bump `CACHE_VERSION` in `public/sw.js`, hard refresh |
+| Login "werkt" maar redirect niet | browser-cache / service worker | hard refresh; `sw.js` cachet `/api` nooit |
+| `db: down` op `/healthz` | DB-creds of MySQL onbereikbaar | controleer `server/.env` DB-waarden |
+| `h20`-rol niet te kiezen / insert-fout | DB mist de `h20` ENUM-waarde | ALTER uit §5 draaien |
 
 ---
 
-## 7. Beveiliging (checklist)
+## 9. Beveiliging (checklist)
 
 - [ ] Geen geheimen in git (`.env`, `*.local.md`, `*.key`, `*.pem` zijn genegeerd).
 - [ ] `COOKIE_SECURE=true` op productie (HTTPS aanwezig).
 - [ ] `CORS_ORIGIN` beperkt tot `https://meetings.h20.gg`.
-- [ ] Admin-wachtwoord gewijzigd na eerste login.
-- [ ] DB-gebruiker heeft alleen rechten op de eigen database.
+- [ ] Admin-wachtwoord gewijzigd na de eerste login.
+- [ ] DB-gebruiker (`h20meeting`) heeft alleen rechten op de eigen database.

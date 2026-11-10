@@ -1,11 +1,11 @@
 # Meetingrooms H20 — Project Plan
 
-> **Status**: ✅ Fase 1 voltooid · 🔨 Fase 2 gestart — backend-scaffold (Node + Express + MySQL) staat in `server/`
-> **Volgende stap**: Frontend koppelen aan de backend-API; daarna fysieke tablet-rollout
-> **Locatie code**: `/home/tom/Desktop/Claude/Meetingroom Project` (backend in `server/`)
+> **Status**: ✅ Fase 1 & 2 voltooid — backend live op MySQL/MariaDB, frontend volledig op de REST-API
+> **Live**: <https://meetings.h20.gg> (Plesk + Phusion Passenger)
+> **Volgende stap**: Fase 3 (Outlook/Google Calendar-sync) + fase 4 (fysieke tablet-rollout in kiosk-mode)
 > **Naam vs. domein**: app heet **Meetingrooms H20**; `Meetings@h20.gg` is het e-maildomein
 > **Eigenaar**: Tom · H20 Esports Campus Amsterdam
-> **Laatst bijgewerkt**: 2026-05-29
+> **Laatst bijgewerkt**: 2026-06-10
 
 ---
 
@@ -29,7 +29,7 @@ Realtime sync tussen alle schermen.
 
 | ID         | Naam        | Locatie                          |
 |------------|-------------|----------------------------------|
-| `aquarium` | Aquarium    | Glazen ruimte · 1e verdieping    |
+| `aquarium` | Edu Lab     | Glazen ruimte · 1e verdieping    |
 | `bundled`  | Bundled     | Brainstormruimte · 1e verdieping |
 | `lounge`   | Lounge Café | Café-zone · 1e verdieping        |
 | `raboroom` | Raboroom    | Vergaderruimte · 1e verdieping   |
@@ -70,8 +70,8 @@ Iedere tablet wordt via URL-parameter hardcoded aan één ruimte gekoppeld:
 - Klik op ruimte-kaart → opent tablet-view in nieuw venster
 
 ### 3.4 Realtime Sync
-- **Demo (huidig)**: cross-tab `localStorage` events
-- **Productie (fase 2)**: polling op de MySQL-backend, later eventueel WebSockets
+- **Huidig (productie)**: polling op de MySQL-backend via de REST-API.
+- **Later**: eventueel WebSockets voor push i.p.v. polling.
 
 ### 3.5 Plannen (nieuwe feature)
 
@@ -144,7 +144,7 @@ Gedrag van de pills:
 **Zichtbaarheid:**
 - Tablet bezet-state toont onderin: *"Geboekt door tom@h20.gg"*
 - Dashboard kaartjes tonen email onder elke geplande/lopende meeting.
-- (Fase 2: e-mail kan ook gebruikt worden voor reminders / no-show pings.)
+- (Later: e-mail kan ook gebruikt worden voor reminders / no-show pings.)
 
 ### 3.8 Geen tijdslimiet
 
@@ -154,24 +154,25 @@ Een ruimte mag voor onbeperkte tijd geboekt worden:
 - Bij plannen: geen maximum op duur per slot.
 - **Enige rem**: de conflict-check tegen volgende geplande meeting (zie 3.6).
 
-Praktisch: de input accepteert iedere positieve waarde ≥ 5 minuten. Op het scherm wordt lange duur netjes weergegeven (`tot 14:30 morgen` als het over middernacht heen gaat — fase 2 verbetering).
+Praktisch: de input accepteert iedere positieve waarde ≥ 5 minuten. Op het scherm wordt lange duur netjes weergegeven (`tot 14:30 morgen` als het over middernacht heen gaat — latere verbetering).
 
 ### 3.9 Offline-mode (kritiek voor productie)
 
 De tablet bij de deur mag **nooit** offline een witte pagina tonen. WiFi valt incidenteel weg op de campus en het systeem moet daar tegen kunnen.
 
-**Aanpak:**
-- **Service Worker** (`sw.js`) cachet alle statische assets (HTML/CSS/JS/logo/font) bij eerste bezoek.
-- **State**: laatste bekende status van de ruimte staat in `localStorage` — blijft beschikbaar zonder netwerk.
-- **Offline indicator**: subtiele pill rechtsboven *"Offline — werkt nog door"*.
-- **Action queue**: starten/verlengen/beëindigen tijdens offline wordt in `localStorage` queue gezet (`h20-pending-actions`). Bij online-event spoelt de queue richting de server (fase 2) of merged direct in lokale state (fase 1).
-- **Reconnect-detectie**: `navigator.onLine` + `online`/`offline` events + heartbeat-ping naar `/healthz` elke 30 sec (fase 2). Bij reconnect: toast *"Weer online — wijzigingen gesynchroniseerd."*
-- **Conflict-resolutie bij sync** (fase 2): server is source of truth; bij overlap krijgt eerst geboekt voorrang en wordt de offline-poging gemarkeerd als geweigerd met heldere uitleg.
+**Aanpak (huidig):**
+- **Service Worker** (`public/sw.js`) cachet de statische assets (HTML/CSS/JS/logo)
+  bij eerste bezoek; navigatie is network-first met cache-fallback, `/api` wordt
+  nooit gecachet (zaalstatus moet altijd live zijn).
+- **Offline indicator**: subtiele banner die eerlijk meldt dat acties niet
+  doorgaan zolang er geen netwerk is (geen valse belofte van een lokale queue).
+- Bij `'unknown'`-status (server onbereikbaar) toont de tegel een neutrale staat,
+  géén valse "Beschikbaar".
 
-**Fase 1 (huidig)**:
-- SW geïnstalleerd + cache-first strategie voor assets.
-- Pending-queue UI zichtbaar maar geen echte server-sync (geen backend).
-- Manual "Sync nu"-knop op het tablet-debug-scherm (lang ingedrukt logo) voor demo.
+**Mogelijke uitbreiding (later):**
+- Offline action-queue met server-sync en conflict-resolutie (server is source of
+  truth; bij overlap krijgt eerst-geboekt voorrang). Bewust nog niet gebouwd om geen
+  valse zekerheid te wekken.
 
 ### 3.10 Kiosk-bescherming
 
@@ -243,42 +244,52 @@ Hue-lampen of LED-strips boven/naast iedere deur tonen de status zonder dat iema
 **Rollen:**
 | Rol     | Mag                                                                |
 |---------|---------------------------------------------------------------------|
-| `admin` | Alles. Gebruikers/admins beheren, Hue/kiosk configureren, alle meetings annuleren, exit-PIN wijzigen. |
-| `user`  | Dashboard bekijken, alleen eigen geplande meetings annuleren.       |
+| `admin` | Alles. Gebruikers/uitnodigingen beheren, wachtwoord-resets, kiosk configureren, historie inzien + wissen, alle meetings beheren. |
+| `h20`   | Standaard gebruikersrechten **plus** de vergader-historie inzien en exporteren in Beheer (geen wissen, geen gebruikersbeheer/kiosk). |
+| `user`  | Dashboard bekijken en meetings starten/verlengen/beëindigen/plannen. Geen toegang tot Beheer. |
+
+Implementatie: `role ENUM('admin','user','h20')` in `users` + `invites`; middleware
+`requireAuth` / `requireAdmin` / `requireHistoryViewer` in `server/lib/auth.js`.
 
 **Default seed:**
 - E-mail: `tom@h20.gg`
 - Naam: `Tom`
 - Rol: `admin`
-- Wachtwoord: `H20esports@`
+- Wachtwoord: zie `DEPLOY-SECRETS.local.md` (seed; na eerste login gewijzigd).
 
-**Wachtwoord-opslag:**
-- **Fase 1 (demo)**: SHA-256 hash via `window.crypto.subtle` + per-user salt, opgeslagen in `localStorage` key `h20-users`. Géén plaintext.
-- **Fase 2 (productie)**: bcrypt server-side (cost 12) in MySQL via de Express-backend; sessies als httpOnly cookie. De migratie seedt admin `tom@h20.gg` opnieuw met een bcrypt-hash (`server/scripts/migrate.js`).
+**Wachtwoord-opslag (productie):**
+- bcrypt server-side (cost 12) in MySQL via de Express-backend; sessies als
+  httpOnly cookie, same-origin. PINs worden eveneens met bcrypt gehasht.
+- De migratie seedt admin `tom@h20.gg` met een bcrypt-hash en overschrijft een
+  bestaand account niet (`server/scripts/migrate.js`).
 
 **Schermen:**
 1. `login.html` — e-mail + wachtwoord + "Wachtwoord vergeten?"-link.
 2. `dashboard.html` — vereist sessie. Logout-knop rechtsboven.
 3. `admin.html` — alleen voor admins. Tabel van users met: e-mail · naam · rol · acties (rol wijzigen, wachtwoord resetten, verwijderen). Knop *"Gebruiker toevoegen"*.
 
-**Wachtwoord vergeten:**
-- Gebruiker vult e-mail in op `login.html`.
-- App genereert reset-token (random 6-cijferig), slaat tijdelijk op in localStorage (TTL 30 min).
-- **Demo (fase 1)**: opent `mailto:admin-mail?subject=Wachtwoord reset H20 Meetingroom&body=Reset-token: 123456 …` zodat de gebruiker dat zelf naar de admin stuurt. Admin kan in admin-panel het token verifiëren en een nieuw wachtwoord instellen.
-- **Productie (fase 2)**: backend genereert een reset-token (`POST /api/auth/reset/request`) en de admin deelt de link/code; consumeren via `POST /api/auth/reset/consume`. Automatische e-mailverzending kan later toegevoegd worden.
+**Wachtwoord vergeten (admin-gestuurd):**
+- Reset-tokens worden **alleen door een admin** gegenereerd via Beheer
+  (`POST /api/auth/reset/request`, admin-only). Openstaande resets staan onder
+  `GET /api/auth/resets`. De gebruiker consumeert het token via
+  `POST /api/auth/reset/consume`. Er is bewust geen publieke self-service
+  reset-flow (die lekte voorheen account-overname). Automatische e-mailverzending
+  kan later toegevoegd worden.
 
-**Gebruiker toevoegen (admin):**
-- Naam, e-mail, rol (`user`/`admin`), tijdelijk wachtwoord.
-- Optie *"E-mail welkomstbericht openen"* — opent `mailto:` met klaargezet bericht + tijdelijk wachtwoord.
-- Bij eerste login moet de gebruiker het wachtwoord wijzigen (fase 2).
+**Gebruiker toevoegen / uitnodigen (admin):**
+- Naam, e-mail, rol (`user`/`h20`/`admin`), via directe aanmaak of een uitnodiging.
+- Account-aanmaak koppelt een PIN voor de tablet-check-in.
 
 **Sessie:**
-- Login zet `h20-session` key in `localStorage` met `{userId, expiresAt}` — default TTL 7 dagen.
-- `auth.requireLogin()` aan het begin van dashboard/admin → redirect naar login bij ongeldig.
-- Logout wist sessie + redirect.
+- Login zet een httpOnly sessie-cookie (server-side `sessions`-tabel); same-origin.
+- Beveiligde pagina's checken de sessie via `GET /api/auth/me`; bij 401 → redirect
+  naar login (centrale `h20:unauthorized`-afhandeling).
+- Logout wist de sessie server-side + redirect.
 
-**Veiligheid (eerlijk in fase 1):**
-- Dit is **demo-auth** in de browser. Iemand die `localStorage` opent kan hashes lezen en met genoeg kennis een sessie vervalsen. Het is goed genoeg om medewerkers te scheiden van bezoekers en om Matthijs te laten zien hoe het zou werken. **Productie-auth komt in fase 2 met server-side bcrypt + httpOnly sessie-cookies (Express-backend).** Dit staat ook duidelijk in de login-pagina.
+**Veiligheid:**
+- Server-side bcrypt (cost 12) voor wachtwoorden én PINs, httpOnly sessie-cookies,
+  same-origin. Hash-kolommen verlaten nooit de server. De tablet-kiosk is bewust
+  openbaar (werkt bij de deur zonder login); dashboard en Beheer vereisen een sessie.
 
 ---
 
@@ -338,48 +349,52 @@ Centraal component. Eén notificatie tegelijk, max 6 sec zichtbaar.
 
 ---
 
-## 6. Architectuur
+## 6. Architectuur (productie, huidig)
 
-### Fase 1 (huidig)
-```
-[ tablet.html ] ── localStorage ──┐
-[ tablet.html ] ── localStorage ──┼─► gedeelde mock-store (app.js)
-[ tablet.html ] ── localStorage ──┤
-[ dashboard.html ] ── localStorage ┘
-```
-- Cross-tab events simuleren realtime sync.
-- Geen server, geen build, geen dependencies.
-
-### Fase 2 (productie)
 ```
 [ tablet × 4 ] ──┐         ┌─────────────────────────────┐
 [ dashboard  ] ──┼──fetch─►│ Express API (server/)        │
 [ admin      ] ──┘         │  routes/rooms · routes/auth  │
-                           └──────────────┬──────────────┘
-                                          └─► MySQL (InnoDB, utf8mb4)
+[ login      ] ──┘         └──────────────┬──────────────┘
+                                          └─► MySQL/MariaDB (InnoDB, utf8mb4)
 ```
-- Backend-scaffold staat in `server/`: `index.js`, `db.js`, `lib/auth.js`, `routes/rooms.js`, `routes/auth.js`, `schema.sql`, `scripts/migrate.js`.
-- Endpoints retourneren dezelfde envelope-vorm als de huidige frontend-returnwaarden, zodat `app.js`/`auth.js` per functie 1-op-1 gekoppeld kunnen worden (`getRoomStatus`, `startMeeting`, `extendMeeting`, `endMeeting`, `scheduleMeeting`, `cancelScheduled`, plus de `window.Auth`-functies).
-- Conflict-logica (`canStart`/`canExtend`/`canSchedule`, overlap-checks) is server-side geport naar SQL zodat de business rules behouden blijven.
-- MySQL draait op een externe server; verbinden kan direct of via SSH-tunnel (zie `server/README.md`).
+- Hosting: Plesk + Phusion Passenger. Repo-root `app.js` = `require('./server/index.js')`.
+  Webroot `public/` serveert de statische frontend; `/api` draait same-origin.
+- Backend in `server/`: `index.js`, `db.js`, `lib/auth.js`, `routes/rooms.js`,
+  `routes/auth.js`, `schema.sql`, `scripts/migrate.js`.
+- De frontend draait volledig op de REST-API; `app.js`/`auth.js` doen async fetch
+  (`getRoomStatus`, `startMeeting`, `extendMeeting`, `endMeeting`, `scheduleMeeting`,
+  `cancelScheduled` + de `window.Auth`-functies). Envelope-vorm `{ok, reason?, data?}`.
+- Conflict-logica (`canStart`/`canExtend`/`canSchedule`, overlap-checks) staat
+  server-side in SQL zodat de business rules op één plek leven.
+- Service Worker (`public/sw.js`) cachet statische assets offline; `/api` wordt
+  nooit gecachet (`CACHE_VERSION` bumpen bij elke frontend-deploy).
 
 ---
 
 ## 7. Bestanden
 
-| Bestand            | Rol                                                |
-|--------------------|----------------------------------------------------|
-| `index.html`       | Showcase / pitch-pagina (presentatie aan Matthijs) |
-| `tablet.html`      | Tablet kiosk — gekoppeld via `?room=...`           |
-| `dashboard.html`   | Centraal live overzicht                            |
-| `styles.css`       | Design tokens, H20 branding, alle componenten      |
-| `app.js`           | State, helpers, mock-store, realtime API           |
-| `auth.js`          | Login + gebruikersbeheer (localStorage, fase 1)    |
-| `Logo H20 2026.png`| Officieel logo                                     |
-| `README.md`        | Snelstart-instructies (NL)                         |
-| `PROJECT_PLAN.md`  | Dit document — volledige project-roadmap          |
-| `server/`          | Backend-API (Node + Express + MySQL) — fase 2      |
-| `server/README.md` | Backend-setup, SSH-tunnel, migratie, smoke-tests   |
+Alle frontend-bestanden staan in `public/` (de webroot).
+
+| Bestand                 | Rol                                                |
+|-------------------------|----------------------------------------------------|
+| `public/index.html`     | Portal / entry-pagina                              |
+| `public/login.html`     | Inloggen + wachtwoord-reset (admin-gestuurd)       |
+| `public/tablet.html`    | Tablet-kiosk — gekoppeld via `?room=...`           |
+| `public/dashboard.html` | Centraal live overzicht                            |
+| `public/admin.html`     | Beheer: gebruikers, uitnodigingen, historie, resets, kiosk |
+| `public/styles.css`     | Design tokens, H20 branding, alle componenten      |
+| `public/app.js`         | `window.H20` — rooms/meetings (async REST)         |
+| `public/auth.js`        | `window.Auth` — login/gebruikers/PIN (async REST)  |
+| `public/kiosk.js`       | Kiosk-bescherming (fullscreen, wake-lock, exit-PIN)|
+| `public/sw.js`          | Service worker (offline cache; cachet `/api` niet) |
+| `public/Logo H20 2026.png`| Officieel logo                                   |
+| `app.js` (root)         | Passenger-entrypoint → `require('./server/index.js')` |
+| `server/`               | Backend-API (Node + Express + MySQL)               |
+| `server/README.md`      | Backend-setup, configuratie, migratie, endpoints   |
+| `README.md`             | Snelstart + overzicht (NL)                         |
+| `PROJECT_PLAN.md`       | Dit document — functionele scope + roadmap         |
+| `DEPLOY.md`             | Deploy- en beheer-instructies                      |
 
 ---
 
@@ -403,16 +418,17 @@ Centraal component. Eén notificatie tegelijk, max 6 sec zichtbaar.
 - [ ] ~~Philips Hue integratie~~ — geparkeerd, alleen op verzoek opnieuw inbouwen (zie 3.11)
 - [x] Login-systeem voor dashboard (admin Tom + gebruikersbeheer + wachtwoord-reset)
 
-### 🔨 Fase 2 — Backend & Realtime
-- [x] Backend-stack gekozen: Node.js + Express + MySQL (i.p.v. Supabase)
+### ✅ Fase 2 — Backend & Realtime (klaar, live)
+- [x] Backend-stack: Node.js + Express + MySQL/MariaDB
 - [x] MySQL-schema: `rooms`, `active_meetings`, `scheduled_meetings`, `meeting_history`, `users`, `sessions`, `invites`, `password_resets`, `pin_setups` (`server/schema.sql`)
 - [x] Migratie + admin-seed met bcrypt (`server/scripts/migrate.js`)
 - [x] REST-endpoints rooms/meetings + auth/gebruikers (`server/routes/`)
-- [x] Server-side auth: bcrypt + httpOnly sessie-cookies, CORS beperkt tot frontend-origin
-- [ ] MySQL koppelen op externe server (Johan) + migratie draaien
-- [ ] `app.js` / `auth.js` migreren van localStorage → fetch naar de API
-- [ ] Realtime: polling op de backend (later eventueel WebSockets)
-- [ ] Audit-log uitbreiden (basis: `meeting_history`)
+- [x] Server-side auth: bcrypt (wachtwoorden + PINs) + httpOnly sessie-cookies, same-origin
+- [x] Rollen `admin` / `user` / `h20` (historie-inzage voor `h20`)
+- [x] `app.js` / `auth.js` migreren van localStorage → fetch naar de API
+- [x] Realtime: polling op de backend (later eventueel WebSockets)
+- [x] Productie live op <https://meetings.h20.gg> (Plesk + Passenger)
+- [ ] Audit-log uitbreiden (basis aanwezig: `meeting_history`)
 
 ### 🔮 Fase 3 — Integraties & Slimheid
 - [ ] Outlook / Google Calendar two-way sync
@@ -434,9 +450,8 @@ Centraal component. Eén notificatie tegelijk, max 6 sec zichtbaar.
 
 | Keuze                          | Rationale                                                                 |
 |--------------------------------|---------------------------------------------------------------------------|
-| Statisch HTML/CSS/JS in fase 1 | Geen build, geen npm. Dubbelklik = werkt. Snel prototype voor pitch.      |
-| Vanilla JS                     | Geen framework lock-in. Hele codebase blijft <1000 regels en leesbaar.    |
-| Node + Express + MySQL (fase 2)| MySQL draait op de server van Johan; Express spiegelt het bestaande API-oppervlak 1-op-1. |
+| Vanilla HTML/CSS/JS (geen build)| Geen build-step, geen framework lock-in. Statische frontend uit `public/`. |
+| Node + Express + MySQL/MariaDB | Express op Plesk/Passenger; centrale DB als bron van waarheid voor alle schermen. |
 | bcrypt server-side             | Vervangt client-side SHA-256; salt zit in de hash, geen plaintext.        |
 | H20 magenta + donkere UI       | Past bij gaming/esports merk. Sterk contrast op ieder scherm.             |
 | URL-parameter voor room-id     | Hardcoded koppeling zonder build-step. Per tablet één bookmark.           |
@@ -449,7 +464,7 @@ Centraal component. Eén notificatie tegelijk, max 6 sec zichtbaar.
 1. **Welke tablets?** Android of iPad? Bepaalt kiosk-strategie.
 2. **Netwerk**: alle tablets op WiFi? Backup-gedrag bij offline?
 3. **Tijd-synchronisatie**: alle tablets moeten dezelfde tijd hebben → NTP afdwingen.
-4. **Authenticatie**: mag iedereen alles plannen? Of alleen ingelogde medewerkers? (Fase 2 beslissing)
+4. **Authenticatie**: de tablet-kiosk is bewust openbaar (werkt bij de deur); dashboard + Beheer vereisen een sessie. Open vraag: willen we plannen óók achter login zetten?
 5. **Privacy**: titels van meetings zichtbaar voor iedereen op het dashboard? Optie om "privé" aan te vinken?
 6. **Outlook-integratie**: wel/niet nodig? Vergt extra fase + Microsoft Graph API setup.
 
@@ -457,32 +472,27 @@ Centraal component. Eén notificatie tegelijk, max 6 sec zichtbaar.
 
 ## 11. Hosting & Overdracht
 
-### Lokaal draaien
+### Lokaal draaien (dev)
 ```bash
-cd "/home/tom/Desktop/Claude/Meetingroom Project"
-python3 -m http.server 8080
-# http://localhost:8080/
+sudo service mariadb start          # lokale database (eenmalig per boot)
+cd server && node dev-local.js      # frontend + /api same-origin op poort 8080
+# http://localhost:8080/login.html
 ```
+`dev-local.js` is dev-only en `.gitignore`'d. Details: `server/README.md`.
 
-### Naar productie (fase 1, statisch)
-- **Optie A**: Netlify drop — sleep de map naar netlify.com → URL klaar.
-- **Optie B**: Eigen Nginx/Caddy op interne H20 server.
-- **Optie C**: GitHub Pages.
-
-### Naar productie (fase 2, met MySQL-backend)
-- Frontend: zelfde als hierboven (statisch).
-- Backend: Node-proces uit `server/` tegen MySQL op de server van Johan. Setup, SSH-tunnel en migratie staan in `server/README.md`. Process-manager (pm2/systemd) volgt later.
+### Productie (live)
+- Plesk + Phusion Passenger op <https://meetings.h20.gg>.
+- App-root `~/meetings.h20.gg`, webroot `~/meetings.h20.gg/public`, entrypoint
+  `app.js` (`require('./server/index.js')`), Node 24.
+- Deploy = `git pull` → eventueel `npm install --omit=dev` / migratie →
+  `touch tmp/restart.txt`. Volledige stappen + troubleshooting: `DEPLOY.md`.
 
 ---
 
-## 12. Contact & Volgende stap
+## 12. Volgende stappen
 
-Fase 2 is gestart — de backend-scaffold staat klaar. Resterende stappen:
-1. MySQL-toegang van Johan ontvangen; `.env` invullen (of via SSH-tunnel).
-2. `npm run migrate` draaien → schema + admin-seed.
-3. `app.js` / `auth.js` migreren van localStorage naar fetch — geschat 4-6 uur omdat de API al bestaat en de envelope-vorm matcht.
-4. Beslissingen op de open vragen (sectie 10).
-5. Tablets bestellen + kiosk-config.
-6. Pilot in één ruimte (Raboroom), daarna uitrol naar alle vier.
-
-**Geschat tijdspad fase 2**: 1-2 weken parttime.
+Fase 1 & 2 zijn live. Resterend:
+1. **Fase 3** — Outlook/Google Calendar two-way sync, no-show detectie, analytics.
+2. **Fase 4** — fysieke tablet-rollout in kiosk-mode (Android Fully Kiosk Browser
+   of iPad guided access), monitoring + backup-procedure.
+3. Beslissingen op de open vragen (sectie 10), m.n. privacy van meeting-titels.
